@@ -46,26 +46,26 @@ if ! id -u "$SVC_USER" >/dev/null 2>&1; then
     useradd --system --home-dir "$DATA_DIR" --shell /usr/sbin/nologin "$SVC_USER"
 fi
 mkdir -p "$DATA_DIR" "$APP_DIR"
-chown "$SVC_USER:$SVC_USER" "$DATA_DIR"
+chown "$SVC_USER:$SVC_USER" "$DATA_DIR" "$APP_DIR"
 chmod 700 "$DATA_DIR"
+as_svc() { sudo -H -u "$SVC_USER" "$@"; }     # 소스 · 가상환경 · 데이터는 모두 전용 사용자 권한으로 (git 도 — root 로 하면 '소유자 다름' 오류)
 
 # ── 3. 소스 받기 (있으면 최신으로) ──
 if [ -d "$APP_DIR/.git" ]; then
     say "이미 설치돼 있어요. 최신 소스로 맞춰요 ($BRANCH)"
-    git -C "$APP_DIR" fetch -q origin "$BRANCH"
-    git -C "$APP_DIR" checkout -q "$BRANCH"
-    git -C "$APP_DIR" reset -q --hard "origin/$BRANCH"
+    as_svc git -C "$APP_DIR" fetch -q origin "$BRANCH"
+    as_svc git -C "$APP_DIR" checkout -q "$BRANCH"
+    as_svc git -C "$APP_DIR" reset -q --hard "origin/$BRANCH"
 else
     say "소스를 받아요: $REPO ($BRANCH)"
-    git clone -q --branch "$BRANCH" "$REPO" "$APP_DIR"
+    as_svc git clone -q --branch "$BRANCH" "$REPO" "$APP_DIR"
 fi
-chown -R "$SVC_USER:$SVC_USER" "$APP_DIR"
 
 # ── 4. 가상환경 · 패키지 ──
 say "파이썬 가상환경과 패키지를 준비해요 (1~3분)"
-sudo -u "$SVC_USER" "$PY" -m venv "$APP_DIR/venv"
-sudo -u "$SVC_USER" "$APP_DIR/venv/bin/pip" install -q --upgrade pip
-sudo -u "$SVC_USER" "$APP_DIR/venv/bin/pip" install -q -r "$APP_DIR/requirements.txt"
+as_svc "$PY" -m venv "$APP_DIR/venv"
+as_svc "$APP_DIR/venv/bin/pip" install -q --upgrade pip
+as_svc "$APP_DIR/venv/bin/pip" install -q -r "$APP_DIR/requirements.txt"
 
 # ── 5. 대시보드 비밀번호 (바깥에서 접속할 때 쓰는 것 · 거래소 키와는 다름) ──
 if [ ! -f "$DATA_DIR/data/dashboard_auth.json" ]; then
@@ -84,7 +84,7 @@ if [ ! -f "$DATA_DIR/data/dashboard_auth.json" ]; then
             fail "비밀번호를 물어볼 수 없어요. STRABOT_DASHBOARD_PASSWORD='원하는비밀번호' 를 앞에 붙여 다시 실행해 주세요."
         fi
     fi
-    sudo -u "$SVC_USER" env STRABOT_DATA_DIR="$DATA_DIR" STRABOT_DASHBOARD_PASSWORD="$PW" "$APP_DIR/venv/bin/python" "$APP_DIR/main.py" --set-password >/dev/null
+    as_svc env STRABOT_DATA_DIR="$DATA_DIR" STRABOT_DASHBOARD_PASSWORD="$PW" "$APP_DIR/venv/bin/python" "$APP_DIR/main.py" --set-password >/dev/null
     unset PW PW2
     say "대시보드 비밀번호를 저장했어요"
 else
@@ -129,6 +129,7 @@ systemctl enable -q strabot
 systemctl restart strabot
 
 # ── 7. 방화벽 (ufw 를 쓰고 있으면 포트를 열어 줌) ──
+# shellcheck source=/dev/null
 PORT_NOW=$(. "$ENV_FILE"; echo "${STRABOT_PORT:-5001}")
 if command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then
     ufw allow "$PORT_NOW/tcp" >/dev/null && say "방화벽(ufw)에서 $PORT_NOW 포트를 열었어요"

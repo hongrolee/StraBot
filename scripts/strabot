@@ -7,6 +7,8 @@ SVC_USER=strabot
 ENV_FILE=/etc/strabot.env
 
 need_root() { [ "$(id -u)" -eq 0 ] || exec sudo "$0" "$@"; }
+as_svc() { sudo -H -u "$SVC_USER" "$@"; }
+# shellcheck source=/dev/null
 port() { ( [ -f "$ENV_FILE" ] && . "$ENV_FILE"; echo "${STRABOT_PORT:-5001}" ); }
 
 case "${1:-}" in
@@ -20,18 +22,17 @@ case "${1:-}" in
     update)
         need_root "$@"
         echo "최신 소스를 받아요…"
-        git -C "$APP_DIR" fetch -q origin
-        BR=$(git -C "$APP_DIR" rev-parse --abbrev-ref HEAD)
-        git -C "$APP_DIR" reset -q --hard "origin/$BR"
-        chown -R "$SVC_USER:$SVC_USER" "$APP_DIR"
-        sudo -u "$SVC_USER" "$APP_DIR/venv/bin/pip" install -q -r "$APP_DIR/requirements.txt"
+        as_svc git -C "$APP_DIR" fetch -q origin
+        BR=$(as_svc git -C "$APP_DIR" rev-parse --abbrev-ref HEAD)
+        as_svc git -C "$APP_DIR" reset -q --hard "origin/$BR"
+        as_svc "$APP_DIR/venv/bin/pip" install -q -r "$APP_DIR/requirements.txt"
         install -m 755 "$APP_DIR/scripts/strabot" /usr/local/bin/strabot
         systemctl restart strabot
-        echo "업데이트했어요: $(git -C "$APP_DIR" log -1 --format='%h %s')" ;;
+        echo "업데이트했어요: $(as_svc git -C "$APP_DIR" log -1 --format='%h %s')" ;;
     password)
         need_root "$@"
         systemctl stop strabot
-        sudo -u "$SVC_USER" env STRABOT_DATA_DIR="$DATA_DIR" "$APP_DIR/venv/bin/python" "$APP_DIR/main.py" --set-password
+        as_svc env STRABOT_DATA_DIR="$DATA_DIR" "$APP_DIR/venv/bin/python" "$APP_DIR/main.py" --set-password
         systemctl start strabot ;;
     port)
         need_root "$@"
@@ -42,8 +43,10 @@ case "${1:-}" in
         echo "http://$(curl -fsS -m 5 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}'):$(port)" ;;
     uninstall)
         need_root "$@"
-        read -r -p "StraBot 을 지울까요? 설정 · 기록($DATA_DIR)은 남겨요. [y/N] " a </dev/tty
-        [ "$a" = "y" ] || exit 0
+        if [ "${2:-}" != "-y" ]; then
+            read -r -p "StraBot 을 지울까요? 설정 · 기록($DATA_DIR)은 남겨요. [y/N] " a </dev/tty
+            [ "$a" = "y" ] || exit 0
+        fi
         systemctl disable --now strabot || true
         rm -f /etc/systemd/system/strabot.service /usr/local/bin/strabot
         systemctl daemon-reload
@@ -59,7 +62,7 @@ strabot — StraBot 서버 명령
   strabot port 5001   포트 바꾸기
   strabot start | stop | restart
   strabot url         접속 주소만
-  strabot uninstall   프로그램 지우기 (설정 · 기록은 남김)
+  strabot uninstall   프로그램 지우기 (설정 · 기록은 남김, 묻지 않으려면 -y)
 EOF
         ;;
 esac

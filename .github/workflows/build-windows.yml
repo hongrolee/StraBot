@@ -1,0 +1,61 @@
+# Windows 설치 파일 빌드 — 손으로 실행하거나(workflow_dispatch) v1.2.3 같은 태그를 올리면
+#   PyInstaller(AutoTradingBot.spec) → dist\StraBot.exe → Inno Setup(setup.iss) → StraBot_Setup.exe
+#   결과는 Actions 의 artifact 로 남고, 태그 빌드는 GitHub Release 에도 붙어요 (사이트의 다운로드는 따로 올려요).
+name: build-windows
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: 패키지 설치
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: 버전 읽기 (gui/__init__.py)
+        id: ver
+        shell: bash
+        run: echo "version=$(python -c 'import gui; print(gui.__version__)')" >> "$GITHUB_OUTPUT"
+      - name: PyInstaller
+        run: python -m PyInstaller --noconfirm --clean AutoTradingBot.spec
+      - name: Inno Setup (한국어 메시지 파일 포함)
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup --no-progress -y | Out-Null }
+          $lang = "${env:ProgramFiles(x86)}\Inno Setup 6\Languages\Korean.isl"
+          if (-not (Test-Path $lang)) {
+            Invoke-WebRequest -Uri "https://raw.githubusercontent.com/jrsoftware/issrc/main/Files/Languages/Unofficial/Korean.isl" -OutFile $lang
+          }
+          & $iscc "/DAppVersion=${{ steps.ver.outputs.version }}" setup.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: SHA-256
+        shell: bash
+        run: |
+          cd INSTALLER_OUTPUT_DIR
+          sha256sum StraBot_Setup.exe | tee StraBot_Setup.exe.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StraBot_Setup-${{ steps.ver.outputs.version }}
+          path: |
+            INSTALLER_OUTPUT_DIR/StraBot_Setup.exe
+            INSTALLER_OUTPUT_DIR/StraBot_Setup.exe.sha256
+          if-no-files-found: error
+      - name: GitHub Release (태그 빌드만)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: StraBot ${{ steps.ver.outputs.version }}
+          files: |
+            INSTALLER_OUTPUT_DIR/StraBot_Setup.exe
+            INSTALLER_OUTPUT_DIR/StraBot_Setup.exe.sha256

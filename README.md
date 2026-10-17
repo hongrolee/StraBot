@@ -1,5 +1,7 @@
 # StraBot
 
+[![tests](https://github.com/hongrolee/StraBot/actions/workflows/tests.yml/badge.svg)](https://github.com/hongrolee/StraBot/actions/workflows/tests.yml)
+
 업비트 · 빗썸 원화 마켓에서 **내가 정한 규칙대로** 사고파는 설치형 자동매매 프로그램이에요.
 프로그램과 거래소 API 키는 내 PC에만 있고, 실제 주문 전에 시뮬레이션으로 충분히 시험해 볼 수 있어요.
 
@@ -118,6 +120,11 @@ python -m pytest -q tests
 ## Windows 설치 파일 빌드
 
 Windows에서 `build.bat` 를 실행해요 (PyInstaller 로 `dist\StraBot.exe`, Inno Setup 으로 `StraBot_Setup.exe`). 설정 파일이나 키는 실행 파일에 들어가지 않아요.
+
+## 자동 검사 · 빌드 (GitHub Actions)
+
+- [tests](.github/workflows/tests.yml): main 에 올리거나 PR 을 열면 우분투 · Windows 에서 pytest 를 돌리고, 우분투에서는 `scripts/install.sh` 를 **실제로 끝까지 설치**해서 systemd 서비스 · 비밀번호 로그인 · `strabot update` · `uninstall` 까지 확인해요.
+- [build-windows](.github/workflows/build-windows.yml): `v1.2.3` 같은 태그를 올리거나 손으로 실행하면 Windows 설치 파일을 만들어 artifact 로 남기고, 태그 빌드는 GitHub Release 에도 붙여요 (SHA-256 파일 포함). 사이트(strabot.mayai.kr)의 다운로드는 그 파일을 따로 올려요.
 
 ## 기여
 
