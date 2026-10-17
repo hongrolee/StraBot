@@ -46,8 +46,43 @@ python main.py
 | `STRABOT_DATA_DIR` | 설정 · 기록 폴더 (기본: Windows `%LOCALAPPDATA%\StraBot`, 소스 실행은 저장소 폴더) |
 | `STRABOT_PORT` | 화면 포트 (기본 5001) |
 | `STRABOT_LICENSE_ENFORCE=1` | 소스 실행에서도 설치 파일처럼 계정 로그인 잠금을 켬 (기본은 꺼짐) |
+| `STRABOT_SERVER=1` (또는 `--server`) | 서버 모드: 트레이 · 브라우저 없이, 바깥에 열고 대시보드 비밀번호로 잠금. 데이터 폴더 기본값은 `~/.strabot` |
+| `STRABOT_HOST` | 서버 모드에서 묶을 주소 (기본 `0.0.0.0`, 프록시 뒤면 `127.0.0.1`) |
+| `STRABOT_DASHBOARD_PASSWORD` | 서버 모드 첫 실행 · `--set-password` 에서 비밀번호를 묻지 않고 이 값으로 |
+| `STRABOT_HTTPS=1` | https 프록시 뒤에서 로그인 쿠키를 Secure 로 |
 
-macOS · 리눅스는 소스로 실행할 수 있지만 트레이 아이콘 등 일부 기능은 Windows 기준이에요. 리눅스 서버용 한 줄 설치 스크립트와 서버 모드(비밀번호 로그인)는 준비 중이에요.
+macOS · 리눅스는 소스로 실행할 수 있지만 트레이 아이콘 등 일부 기능은 Windows 기준이에요. 리눅스 **서버**에 올리려면 아래 한 줄 설치를 쓰세요.
+
+### 리눅스 서버 (우분투 22.04+ · 데비안 12+) — 한 줄 설치
+
+PC를 끄지 않고 24시간 돌리고 싶을 때. root(또는 sudo) 로 들어가서:
+
+```bash
+curl -fsSL https://strabot.mayai.kr/install.sh | sudo bash
+```
+
+설치하는 동안 **대시보드 비밀번호**(8자 이상, 브라우저로 접속할 때 쓰는 것)를 한 번 물어요. 끝나면 `http://서버IP:5001` 로 접속해서 그 비밀번호로 들어가면 돼요. 묻지 않게 하려면 `sudo env STRABOT_DASHBOARD_PASSWORD='...' bash` 처럼 값을 붙여요.
+스크립트([scripts/install.sh](scripts/install.sh))가 하는 일: python3 · git 설치 → `/opt/strabot` 에 이 저장소 받기 → 가상환경 → 로그인할 수 없는 전용 사용자 `strabot` → systemd 서비스(죽거나 재부팅해도 다시 켜짐) → ufw 포트 열기. 설정 · 키 · 기록은 `/var/lib/strabot` 에 있어요.
+
+서버에서 쓰는 명령([scripts/strabot](scripts/strabot)):
+
+| 명령 | 뜻 |
+|---|---|
+| `strabot status` · `strabot logs` | 상태 · 접속 주소 · 실시간 로그 |
+| `strabot update` | 최신 소스를 받아 다시 켬 (봇 · 설정은 그대로) |
+| `strabot password` · `strabot port 5001` | 대시보드 비밀번호 · 포트 바꾸기 |
+| `strabot start` · `stop` · `restart` · `uninstall` | 켜기 · 끄기 · 다시 켜기 · 지우기(설정 · 기록은 남김) |
+
+클라우드(Vultr · AWS 등)는 콘솔의 방화벽에서도 5001 포트를 열어야 하고, 업비트 API 키의 허용 IP 에 서버 IP 를 넣어야 실제 주문이 나가요. https 로 쓰려면 Caddy 같은 프록시를 앞에 두고 `/etc/strabot.env` 에서 `STRABOT_HOST=127.0.0.1`, `STRABOT_HTTPS=1` 로 바꾸세요. 자세한 안내: https://strabot.mayai.kr/linux
+
+#### 서버 모드를 직접 켜기
+
+설치 스크립트 없이 손으로 돌릴 수도 있어요. 서버 모드는 트레이 아이콘 · 브라우저 자동 열기 없이 화면 서버만 켜고, **모든 접속에 대시보드 비밀번호**를 요구해요(틀린 시도는 주소마다 5번 · 10분 잠금). 시스템 종료 신호(SIGTERM)를 받으면 켜져 있던 봇을 기억해 두었다가 다음에 다시 켜요.
+
+```bash
+python main.py --set-password        # 대시보드 비밀번호 정하기 (한 번)
+STRABOT_SERVER=1 STRABOT_PORT=5001 python main.py --server
+```
 
 ## 계정과 실제 주문
 
@@ -59,13 +94,15 @@ macOS · 리눅스는 소스로 실행할 수 있지만 트레이 아이콘 등 
 ## 저장소 구조
 
 ```
-main.py                  프로그램 시작 (트레이 아이콘 · 웹 대시보드)
+main.py                  프로그램 시작 (트레이 아이콘 · 웹 대시보드 · 서버 모드)
+scripts/                 리눅스 서버 한 줄 설치(install.sh) · strabot 명령
 bot_core/                봇 엔진 · 조건 계산 · 백테스트 · 안전장치 · 가상 계좌 · 권한표 확인
 gui/web_dashboard.py     Flask 화면 서버 (API · 시세 · 캔들 · 봇 관리)
+gui/dashboard_auth.py    서버 모드 대시보드 비밀번호 · 로그인
 gui/exchange_feed.py     빗썸 시세 묶음
 static/ templates/       화면 (JS · CSS · HTML)
 utils/                   업비트 요청 속도 조절 · 설정 암호화 · 업데이트 확인 · 코인 정보
-tests/                   pytest (641개)
+tests/                   pytest (649개)
 tools/                   검증 · 백테스트 연구 스크립트 (StraHub 블로그의 검증 기록에 쓴 것)
 AutoTradingBot.spec, setup.iss, build.bat   Windows 설치 파일 빌드
 ```

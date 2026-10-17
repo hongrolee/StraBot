@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>StraBot 로그인</title>
+<link rel="icon" href="{{ url_for('static', filename='img/favicon-512.png') }}">
+<style>
+    :root { color-scheme: light; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #0B1628; color: #0B1628;
+        font-family: "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif; }
+    .box { width: min(400px, calc(100vw - 32px)); background: #fff; border-radius: 14px; padding: 30px 28px 24px; box-shadow: 0 24px 60px rgba(0,0,0,.35); }
+    h1 { margin: 0 0 6px; font-size: 22px; letter-spacing: -.02em; }
+    h1 b { color: #F5B700; }
+    p { margin: 0 0 18px; font-size: 14px; line-height: 1.6; color: #46526B; }
+    label { display: block; font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+    input { width: 100%; box-sizing: border-box; font: inherit; font-size: 16px; padding: 12px 14px; border: 1px solid #C5CCD9; border-radius: 10px; }
+    input:focus { outline: none; border-color: #1F57E7; box-shadow: 0 0 0 3px rgba(31,87,231,.15); }
+    button { width: 100%; margin-top: 14px; font: inherit; font-size: 15px; font-weight: 700; padding: 13px; border: 0; border-radius: 10px; background: #0B1628; color: #fff; cursor: pointer; }
+    button:disabled { opacity: .5; cursor: default; }
+    .err { margin: 12px 0 0; padding: 10px 12px; border-radius: 10px; background: #FEF3F2; color: #B42318; font-size: 13.5px; line-height: 1.6; }
+    .foot { margin: 18px 0 0; font-size: 12.5px; color: #7B869D; }
+    code { font-family: Consolas, monospace; font-size: 12.5px; }
+</style>
+</head>
+<body>
+<form class="box" method="post" action="/login{% if request.args.get('next') %}?next={{ request.args.get('next') | urlencode }}{% endif %}">
+    <h1>Stra<b>Bot</b> 로그인</h1>
+    <p>이 StraBot 은 서버에서 돌고 있습니다. 바깥에서 접속하시려면 대시보드 비밀번호를 넣어 주십시오.</p>
+    <label for="password">비밀번호</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required autofocus{% if disabled %} disabled{% endif %}>
+    <button type="submit"{% if disabled %} disabled{% endif %}>들어가기</button>
+    {% if error %}<div class="err" role="alert">{{ error }}</div>{% endif %}
+    <p class="foot">비밀번호를 잊으셨으면 서버에서 <code>python main.py --set-password</code> 로 새로 정하실 수 있습니다. 봇과 거래소 키는 그대로입니다.</p>
+</form>
+</body>
+</html>

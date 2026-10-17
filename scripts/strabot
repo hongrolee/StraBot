@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# strabot — 리눅스 서버에 설치된 StraBot 을 다루는 명령 (install.sh 가 /usr/local/bin/strabot 으로 넣음)
+set -euo pipefail
+APP_DIR=/opt/strabot
+DATA_DIR=/var/lib/strabot
+SVC_USER=strabot
+ENV_FILE=/etc/strabot.env
+
+need_root() { [ "$(id -u)" -eq 0 ] || exec sudo "$0" "$@"; }
+port() { ( [ -f "$ENV_FILE" ] && . "$ENV_FILE"; echo "${STRABOT_PORT:-5001}" ); }
+
+case "${1:-}" in
+    status)
+        systemctl --no-pager status strabot || true
+        echo; echo "접속 주소: http://$(curl -fsS -m 5 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}'):$(port)" ;;
+    logs)
+        journalctl -u strabot -n "${2:-200}" -f ;;
+    start|stop|restart)
+        need_root "$@"; systemctl "$1" strabot; systemctl --no-pager --lines=0 status strabot || true ;;
+    update)
+        need_root "$@"
+        echo "최신 소스를 받아요…"
+        git -C "$APP_DIR" fetch -q origin
+        BR=$(git -C "$APP_DIR" rev-parse --abbrev-ref HEAD)
+        git -C "$APP_DIR" reset -q --hard "origin/$BR"
+        chown -R "$SVC_USER:$SVC_USER" "$APP_DIR"
+        sudo -u "$SVC_USER" "$APP_DIR/venv/bin/pip" install -q -r "$APP_DIR/requirements.txt"
+        install -m 755 "$APP_DIR/scripts/strabot" /usr/local/bin/strabot
+        systemctl restart strabot
+        echo "업데이트했어요: $(git -C "$APP_DIR" log -1 --format='%h %s')" ;;
+    password)
+        need_root "$@"
+        systemctl stop strabot
+        sudo -u "$SVC_USER" env STRABOT_DATA_DIR="$DATA_DIR" "$APP_DIR/venv/bin/python" "$APP_DIR/main.py" --set-password
+        systemctl start strabot ;;
+    port)
+        need_root "$@"
+        [ -n "${2:-}" ] || { echo "쓰는 법: strabot port 5001"; exit 2; }
+        sed -i "s/^STRABOT_PORT=.*/STRABOT_PORT=$2/" "$ENV_FILE"
+        systemctl restart strabot; echo "포트를 $2 로 바꿨어요 (방화벽도 열어 주세요)" ;;
+    url)
+        echo "http://$(curl -fsS -m 5 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}'):$(port)" ;;
+    uninstall)
+        need_root "$@"
+        read -r -p "StraBot 을 지울까요? 설정 · 기록($DATA_DIR)은 남겨요. [y/N] " a </dev/tty
+        [ "$a" = "y" ] || exit 0
+        systemctl disable --now strabot || true
+        rm -f /etc/systemd/system/strabot.service /usr/local/bin/strabot
+        systemctl daemon-reload
+        rm -rf "$APP_DIR"
+        echo "지웠어요. 설정 · 기록은 $DATA_DIR 에 그대로 있어요." ;;
+    *)
+        cat <<EOF
+strabot — StraBot 서버 명령
+  strabot status      상태 · 접속 주소
+  strabot logs [n]    로그 (실시간)
+  strabot update      최신 소스로 업데이트하고 다시 켬
+  strabot password    대시보드 비밀번호 바꾸기
+  strabot port 5001   포트 바꾸기
+  strabot start | stop | restart
+  strabot url         접속 주소만
+  strabot uninstall   프로그램 지우기 (설정 · 기록은 남김)
+EOF
+        ;;
+esac

@@ -43,6 +43,7 @@
             <!-- StraHub: MAYAi 그룹의 무료 차트 · 지표 · 검증 기록 사이트 (새 창) — 로고 바로 옆 왼쪽 구석 -->
             <a class="nav-hub-link" href="https://app.strahub.com/?ref=strabot-nav" target="_blank" rel="noopener"
                title="StraHub — MAYAi 그룹의 무료 차트 · 코인별 지표 · 검증 블로그 (새 창)">StraHub <i class="bi bi-box-arrow-up-right nhl-ext"></i></a>
+            {% if auth_required %}<a class="nav-hub-link" href="/logout" title="이 브라우저의 로그인을 끝냅니다 (봇은 계속 돕니다)">로그아웃 <i class="bi bi-box-arrow-right nhl-ext"></i></a>{% endif %}
             </div>
             <!-- 메인 메뉴 (상단 바 안) -->
             <ul class="nav main-nav" id="main-tabs" role="tablist">

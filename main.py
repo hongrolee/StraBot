@@ -32,6 +32,13 @@ if os.environ.get('STRABOT_DATA_DIR'):
     BASE_DIR = Path(os.environ['STRABOT_DATA_DIR'])
     BASE_DIR.mkdir(parents=True, exist_ok=True)
 
+# 서버 모드 (리눅스 VPS 등, 2026-10-17): 트레이 아이콘 · 브라우저 자동 열기 없이, 바깥(0.0.0.0)에 열고 대시보드 비밀번호로 잠금
+#   켜기: STRABOT_SERVER=1 또는 `python main.py --server`. 데이터 폴더 기본값은 ~/.strabot (STRABOT_DATA_DIR 로 바꿀 수 있음)
+SERVER_MODE = os.environ.get('STRABOT_SERVER') == '1' or '--server' in sys.argv
+if SERVER_MODE and not os.environ.get('STRABOT_DATA_DIR') and not getattr(sys, 'frozen', False):
+    BASE_DIR = Path.home() / '.strabot'
+    BASE_DIR.mkdir(parents=True, exist_ok=True)
+
 # 로그 디렉토리 생성 (사용자 데이터 디렉토리에)
 log_dir = BASE_DIR / 'logs'
 log_dir.mkdir(parents=True, exist_ok=True)
@@ -67,8 +74,8 @@ try:
     from utils import pyupbit_patch
     pyupbit_patch.apply()
 
-    from gui.tray_icon import TrayIcon
     from gui.web_dashboard import WebDashboard
+    # 트레이 아이콘(pystray)은 run() 에서 필요할 때만 불러옴 — 리눅스 서버(화면 없음)에서는 안 씀 (2026-10-17)
 except ImportError as e:
     error_msg = f"모듈 import 오류: {e}\nBUNDLE_DIR: {BUNDLE_DIR}\nsys.path: {sys.path}"
     logger.error(error_msg)
@@ -92,7 +99,7 @@ class TradingBotApp:
         self.config = self._load_config()
         self.config['base_dir'] = str(BASE_DIR)
 
-        self.tray_icon: Optional[TrayIcon] = None
+        self.tray_icon = None                     # gui.tray_icon.TrayIcon (서버 모드에서는 없음)
         self.web_dashboard: Optional[WebDashboard] = None
 
         logger.info("트레이딩 봇 애플리케이션 초기화")
@@ -197,13 +204,13 @@ class TradingBotApp:
             url = f'http://localhost:{self.web_dashboard.port}#{section}'
             webbrowser.open(url)
 
-    def _ensure_dashboard(self, open_browser: bool = False) -> WebDashboard:
+    def _ensure_dashboard(self, open_browser: bool = False, host: str = '127.0.0.1', require_login: Optional[bool] = None) -> WebDashboard:
         """웹 대시보드 서버가 없으면 만들어 시작 (봇은 이 서버의 시장 데이터·설정을 씀)"""
         if self.web_dashboard:
             return self.web_dashboard
         # 포트는 보통 5001. 시험용으로만 STRABOT_PORT 로 바꿀 수 있음 (같은 PC에서 두 개를 띄울 때)
         self.web_dashboard = WebDashboard(str(self.config_path), port=int(os.environ.get('STRABOT_PORT') or 5001),
-                                          user_data_dir=BASE_DIR)   # 키·기록·계정 정보도 같은 데이터 폴더
+                                          user_data_dir=BASE_DIR, host=host, require_login=require_login)   # 키·기록·계정 정보도 같은 데이터 폴더
         self.web_dashboard.on_save = self._on_config_save
         self.web_dashboard.on_start = self._on_bot_start
         self.web_dashboard.on_stop = self._on_bot_stop
@@ -294,6 +301,25 @@ class TradingBotApp:
             return {'running': self.web_dashboard.bots.running_total(), 'total': len(self.web_dashboard.bots.bots())}
         return None
 
+    def _run_server_mode(self):
+        """서버 모드: 트레이 · 브라우저 없이 화면 서버만. 바깥에 여는 만큼 대시보드 비밀번호가 꼭 있어야 함"""
+        from gui.dashboard_auth import DashboardAuth
+        host = os.environ.get('STRABOT_HOST') or '0.0.0.0'
+        auth = DashboardAuth(BASE_DIR, require_all=True)
+        if not auth.is_set():
+            env_pw = os.environ.get('STRABOT_DASHBOARD_PASSWORD')
+            if env_pw:
+                auth.set_password(env_pw)
+                logger.info("환경 변수의 대시보드 비밀번호를 저장했습니다")
+            else:
+                logger.error("서버 모드는 대시보드 비밀번호가 있어야 켜집니다: `python main.py --set-password` 로 먼저 정해 주십시오")
+                sys.exit(2)
+        self._ensure_dashboard(open_browser=False, host=host, require_login=True)   # 서버 모드는 127.0.0.1 에 묶어도(프록시 뒤) 로그인 필수
+        logger.info(f"서버 모드로 켜졌습니다: http://{host}:{self.web_dashboard.port} (데이터 폴더 {BASE_DIR})")
+        import time
+        while True:
+            time.sleep(1)
+
     def _on_exit(self):
         """종료"""
         logger.info("애플리케이션 종료")
@@ -310,8 +336,17 @@ class TradingBotApp:
     def run(self):
         """애플리케이션 실행"""
         try:
+            import signal
+            try:
+                signal.signal(signal.SIGTERM, lambda *_: self._on_exit())    # systemd stop · kill: 봇을 '다시 켤 것'으로 남기고 끔
+            except (ValueError, OSError):
+                pass
+            if SERVER_MODE:
+                self._run_server_mode()
+                return
             # 트레이 아이콘 생성 시도
             try:
+                from gui.tray_icon import TrayIcon
                 icon_path = BASE_DIR / "assets" / "icon.png"
                 if not icon_path.exists():
                     icon_path = None
@@ -359,6 +394,17 @@ class TradingBotApp:
 
 def main():
     """메인 함수"""
+    if '--set-password' in sys.argv:                      # 서버 모드용 대시보드 비밀번호 정하기 (키 · 봇은 그대로)
+        from gui.dashboard_auth import DashboardAuth
+        import getpass
+        pw = os.environ.get('STRABOT_DASHBOARD_PASSWORD') or getpass.getpass('대시보드 비밀번호 (8자 이상): ')
+        try:
+            DashboardAuth(BASE_DIR).set_password(pw)
+        except ValueError as e:
+            print(f"저장하지 못했습니다: {e}")
+            sys.exit(2)
+        print(f"대시보드 비밀번호를 저장했습니다 ({BASE_DIR / 'data' / 'dashboard_auth.json'})")
+        return
     try:
         app = TradingBotApp()
         app.run()

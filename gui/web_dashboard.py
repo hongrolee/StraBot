@@ -60,7 +60,8 @@ if getattr(sys, 'frozen', False):
 class WebDashboard:
     """웹 기반 대시보드"""
 
-    def __init__(self, config_path: str = "config/bot_config.json", port: int = 5001, user_data_dir=None):
+    def __init__(self, config_path: str = "config/bot_config.json", port: int = 5001, user_data_dir=None, host: str = '127.0.0.1',
+                 require_login: Optional[bool] = None):
         """
         Args:
             config_path: 설정 파일 경로
@@ -68,6 +69,7 @@ class WebDashboard:
             user_data_dir: 사용자 데이터 폴더를 따로 지정 (테스트용: 실제 설정·기록 파일을 건드리지 않게). 보통은 비워 둠
         """
         self.port = port
+        self.host = host                         # '127.0.0.1' = 내 PC 만, 그 밖(0.0.0.0) = 서버 모드 → 대시보드 비밀번호 필수 (2026-10-17)
 
         # 현재 파일의 디렉토리 기준으로 경로 설정
         import sys
@@ -106,6 +108,11 @@ class WebDashboard:
                         static_folder=str(self.base_dir / 'static'))
         # SECRET_KEY는 암호화 유틸리티에서 생성된 것 사용
         self.app.config['SECRET_KEY'] = self.encryption.secret_key
+        # 바깥 접속 잠금: 내 PC(127.0.0.1)에서만 열면 비밀번호 없이, 서버 모드면 모든 요청이 로그인 (gui/dashboard_auth.py)
+        from gui.dashboard_auth import DashboardAuth
+        # require_login: 서버 모드는 바인딩 주소와 상관없이 늘 True (프록시 뒤에서는 모든 요청이 127.0.0.1 로 보이므로)
+        self.auth = DashboardAuth(self.user_data_dir, require_all=(self.host != '127.0.0.1') if require_login is None else bool(require_login))
+        self.auth.install(self.app)
         # 템플릿 수정 시 재시작 없이 새로고침만으로 반영 (기본값은 처음 읽은 것을 계속 사용)
         self.app.config['TEMPLATES_AUTO_RELOAD'] = True
         # PyInstaller 환경에서 async_mode 자동 감지 문제 해결
@@ -332,7 +339,7 @@ class WebDashboard:
             """메인 대시보드 페이지"""
             from bot_core.license import enforced
             ex = self._exchange_info()
-            return render_template('bot_dashboard.html', config=self.config, app_mode=self.app_mode(),
+            return render_template('bot_dashboard.html', config=self.config, app_mode=self.app_mode(), auth_required=self.auth.require_all,
                                    ex_name=ex['name'], ex_fee=ex['fee'], ex_id=ex['id'],
                                    version=__version__, license_enforced=enforced())
 
@@ -983,8 +990,10 @@ class WebDashboard:
             return jsonify({'success': True, 'job': job_id})
 
         @self.socketio.on('connect')
-        def handle_connect():
-            """WebSocket 연결"""
+        def handle_connect(auth_data=None):
+            """WebSocket 연결 (바깥 접속은 로그인한 세션만)"""
+            if not self.auth.allowed(request):
+                return False
             logger.info('클라이언트 연결됨')
             emit('status', {'status': self.bot_status, 'is_running': self.is_running})
 
@@ -2198,7 +2207,7 @@ class WebDashboard:
                 'update_available': update_check.is_newer(info.get('version'), __version__),
                 'downloadable': bool(update_check.installer_url(info) and info.get('sha256')),
                 'needs_login': bool(info.get('auth')) and not self.license.logged_in(),   # 회원 전용 파일인데 로그인 안 함
-                'can_install': bool(getattr(sys, 'frozen', False)),      # 소스로 실행 중이면 자동 설치를 하지 않음
+                'can_install': bool(getattr(sys, 'frozen', False)) and sys.platform == 'win32',      # 소스 실행 · 리눅스 서버는 자동 설치 없음 (서버는 `strabot update`)
                 'file_size': int(info.get('size') or 0),
                 'notes': str(info.get('notes') or ''),
                 'released': str(info.get('released') or ''),
@@ -4829,7 +4838,7 @@ class WebDashboard:
 
         def run_server():
             try:
-                logger.info(f"웹 대시보드 서버 시작: http://localhost:{self.port}")
+                logger.info(f"웹 대시보드 서버 시작: http://{'localhost' if self.host == '127.0.0.1' else self.host}:{self.port}")
                 if open_browser:
                     # 브라우저 자동 열기 (약간의 딜레이)
                     def open_browser_delayed():
@@ -4838,7 +4847,7 @@ class WebDashboard:
 
                     threading.Thread(target=open_browser_delayed, daemon=True).start()
 
-                self.socketio.run(self.app, host='127.0.0.1', port=self.port, debug=False, use_reloader=False, allow_unsafe_werkzeug=True)
+                self.socketio.run(self.app, host=self.host, port=self.port, debug=False, use_reloader=False, allow_unsafe_werkzeug=True)
             except Exception as e:
                 logger.error(f"웹 서버 실행 오류: {e}")
 
