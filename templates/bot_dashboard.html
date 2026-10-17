@@ -1,0 +1,1972 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StraBot - 대시보드</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon-32.png') }}">
+    <link rel="icon" href="{{ url_for('static', filename='img/favicon.ico') }}" sizes="any">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/favicon-180.png') }}">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- 한글이 선명한 글꼴 (설정 화면 가독성) -->
+    <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" rel="stylesheet">
+
+    <!-- Bootstrap 5 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <!-- 검증 그래프: 마우스 휠 확대·축소, 끌어서 옮기기 -->
+    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+    <!-- 캔들차트 (검증 보기: 급등·판 곳·다시 산 곳 표시) -->
+    <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+    <!-- Socket.IO -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bot_dashboard.css') }}">
+</head>
+<body class="{{ 'app-sim' if app_mode == 'sim' else 'app-upbit app-live-' ~ app_mode }}" data-app-mode="{{ app_mode }}" data-ex-name="{{ ex_name }}" data-ex-fee="{{ ex_fee }}">
+    <!-- 네비게이션 바 -->
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container-fluid px-4">
+            <div class="brand-group">
+            <a class="navbar-brand" href="#" aria-label="StraBot">
+                <!-- StraHub 와 같은 마스코트 · 글꼴(Bauhaus 93)로 만든 로고 (2026-10-15) -->
+                <img class="brand-logo" src="{{ url_for('static', filename='img/strabot-logo.png') }}" alt="StraBot" width="160" height="36">
+            </a>
+            <!-- StraHub: MAYAi 그룹의 무료 차트 · 지표 · 검증 기록 사이트 (새 창) — 로고 바로 옆 왼쪽 구석 -->
+            <a class="nav-hub-link" href="https://app.strahub.com/?ref=strabot-nav" target="_blank" rel="noopener"
+               title="StraHub — MAYAi 그룹의 무료 차트 · 코인별 지표 · 검증 블로그 (새 창)">StraHub <i class="bi bi-box-arrow-up-right nhl-ext"></i></a>
+            </div>
+            <!-- 메인 메뉴 (상단 바 안) -->
+            <ul class="nav main-nav" id="main-tabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="chart-lab-tab" data-bs-toggle="tab" data-bs-target="#chart-lab" type="button">
+                        <i class="bi bi-graph-up"></i> 차트 분석
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="markets-tab" data-bs-toggle="tab" data-bs-target="#markets" type="button">
+                        <i class="bi bi-grid-3x3-gap"></i> 전체코인 분석
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="positions-tab" data-bs-toggle="tab" data-bs-target="#positions" type="button">
+                        <i class="bi bi-wallet2"></i> 보유코인 분석
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="bots-tab" data-bs-toggle="tab" data-bs-target="#bots" type="button">
+                        <i class="bi bi-robot"></i> 봇 제작/관리
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="bt-lab-tab" data-bs-toggle="tab" data-bs-target="#bt-lab" type="button">
+                        <i class="bi bi-rewind"></i> 백테스트
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="trades-tab" data-bs-toggle="tab" data-bs-target="#trades" type="button">
+                        <i class="bi bi-list-ul"></i> 거래 내역
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="settings-tab" data-bs-toggle="tab" data-bs-target="#settings" type="button">
+                        <i class="bi bi-gear-fill"></i> 설정
+                    </button>
+                </li>
+            </ul>
+            <!-- 오른쪽: [문제 있을 때만 경고] [알림·공지 아이콘] | [봇 상태 · 모드 · 시작/중지] -->
+            <div class="nav-right ms-auto">
+                <!-- 모드마다 바뀌는 칸(가상 계좌 금액 · 연결 경고)은 모드 스위치 왼쪽에: 이 칸 폭이 바뀌어도 오른쪽 단추들은 움직이지 않음 -->
+                <div class="nav-slot">
+                    <span class="app-sim-cash {{ '' if app_mode == 'sim' else 'd-none' }}" id="app-sim-cash" data-goto="set-sim" role="button" title="가상 계좌 (설정에서 초기자본·초기화)"><small>가상 계좌</small><span id="app-sim-total">-</span></span>
+                <!-- 연결 문제가 있을 때만 보임 (정상이면 숨김) -->
+                <button type="button" class="nav-conn-warn d-none" id="connection-status" data-goto="set-exchange" title="눌러서 거래소 연결 설정을 여실 수 있습니다.">
+                    <span id="connection-indicator"></span><span id="connection-text"></span>
+                </button>
+                </div>
+                <!-- 업비트(실제 계좌) ⇄ 시뮬레이션(가상 계좌): 봇·규칙은 함께 쓰고, 계좌·보유·거래 기록만 다릅니다 -->
+                <div class="app-mode-switch">
+                    <div class="app-mode-seg" role="group" aria-label="모드">
+                        <button type="button" data-app-mode="upbit" class="{{ 'is-on' if app_mode == 'upbit' }}" title="업비트 계좌의 실제 돈으로 사고팝니다"><i class="bi bi-bank"></i> 업비트</button>
+                        <button type="button" data-app-mode="bithumb" class="{{ 'is-on' if app_mode == 'bithumb' }}" title="빗썸 계좌의 실제 돈으로 사고팝니다 (업비트와 따로)"><i class="bi bi-bank2"></i> 빗썸</button>
+                        <button type="button" data-app-mode="sim" class="{{ 'is-on' if app_mode == 'sim' }}" title="초기자본으로 만든 가상 계좌로 사고팝니다 (실제 계좌와 섞이지 않습니다, 시세는 업비트)"><i class="bi bi-controller"></i> 시뮬레이션</button>
+                    </div>
+                    
+                </div>
+                <div class="nav-icons">
+                    <div class="dropdown">
+                        <button type="button" class="nav-icon-btn" id="btn-alert-log" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" aria-label="조건 알림" title="조건 알림이며, 조건 목록에서 🔔를 눌러 조건마다 켜실 수 있습니다.">
+                            <i class="bi bi-bell"></i><span class="nav-icon-count" id="alert-log-count">0</span>
+                        </button>
+                        <div class="dropdown-menu dropdown-menu-end p-0 alert-log-menu" id="alert-log-menu"></div>
+                    </div>
+                    <div class="dropdown" id="upbit-notice-menu">
+                        <button type="button" class="nav-icon-btn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" aria-label="업비트 공지" title="업비트 공지 (내 코인 상폐 예정·입출금 중단, 입출금 점검)">
+                            <i class="bi bi-megaphone"></i><span class="nav-icon-count" id="upbit-notice-count">0</span>
+                        </button>
+                        <div class="dropdown-menu dropdown-menu-end p-0 notice-menu" id="upbit-notice-list"></div>
+                    </div>
+                </div>
+                <!-- 봇: 상태·모드 한 덩어리 + 지금 누를 수 있는 버튼만 (멈춤 → 시작 / 실행 중 → 중지·재시작) -->
+                <div class="nav-bot" role="group" aria-label="봇 제어">
+                    <div class="nav-bot-info">
+                        <span id="status-badge" class="nav-bot-status">봇 중지</span>
+                        <span id="nav-mode" class="nav-bot-mode d-none" title="다른 모드에서 도는 봇"></span>
+                    </div>
+                    <button class="nav-bot-btn is-start" id="btn-start" title="자동매매 시작"><i class="bi bi-play-fill"></i> 시작</button>
+                    <button class="nav-bot-btn is-stop d-none" id="btn-stop" title="자동매매 중지"><i class="bi bi-stop-fill"></i> 중지</button>
+                    <button class="nav-bot-btn is-restart d-none" id="btn-restart" title="봇 재시작" aria-label="봇 재시작"><i class="bi bi-arrow-clockwise"></i></button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 메인 컨테이너 -->
+    <div class="container-fluid mt-4 px-4">
+        <div class="row g-4">
+            <!-- 메인 콘텐츠 -->
+            <div class="col-12">
+
+                <!-- 탭 콘텐츠 -->
+                <div class="tab-content" id="main-tabs-content">
+                    <!-- 설정 탭 -->
+                    <!-- 봇 제작/관리: 왼쪽 = 내 봇 목록, 오른쪽 = 고른 봇의 운영 현황 / 만들기·고치기 단계 화면 -->
+                    <div class="tab-pane fade show active" id="bots" role="tabpanel">
+                        <div class="bots-layout">
+                            <aside class="bots-side" aria-label="내 봇 목록">
+                            <div class="bots-head">
+                                <div>
+                                    <h5 class="mb-0"><i class="bi bi-robot me-2"></i>내 봇</h5>
+                                    <small class="text-muted" id="bots-count"></small>
+                                </div>
+                            </div>
+                            <!-- 전체 봇 보드: 모든 봇 현황 + 돈 나누기 (봇마다 운용 한도는 여기서만 정함) — 맨 위에 크게 -->
+                            <div class="board-entry" id="board-entry" role="button" tabindex="0">
+                                <span class="be-ic"><i class="bi bi-grid-1x2"></i></span>
+                                <div><b>전체 봇 보드</b><small id="board-entry-sub">봇 현황 · 자금 배분</small></div>
+                            </div>
+                            <button type="button" class="btn btn-primary btn-sm bots-new" data-new-bot><i class="bi bi-plus-lg me-1"></i>새 봇 만들기</button>
+                            <div class="bot-style-filter" id="bot-style-filter" role="group" aria-label="봇 성격으로 거르기"></div>
+                            <div class="bot-list" id="bot-list"><div class="text-muted small p-3">불러오는 중...</div></div>
+                            </aside>
+                            <div class="bots-main">
+                                <!-- 처음 사용: 예시 봇으로 따라 만들기 (예시 봇이 있을 때, 닫으면 다시 안 뜸) -->
+                                <div class="bd-guide d-none" id="bd-guide" role="note">
+                                    <div class="bdg-head">
+                                        <b><i class="bi bi-signpost-split me-1"></i>따라 만들기</b>
+                                        <button type="button" class="btn-close" id="bd-guide-close" aria-label="따라 만들기 안내 닫기"></button>
+                                    </div>
+                                    <ol class="bdg-steps">
+                                        <li><b>예시 봇 켜 보기</b> — 위에서 <b>시뮬레이션</b> 모드인지 확인하고, 예시 봇의 [시작]을 눌러 언제 사고파는지 지켜봅니다.
+                                            <button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-guide="open">예시 봇 보기</button></li>
+                                        <li><b>복사해서 내 봇 만들기</b> — 예시를 복사한 뒤 사는 조건 · 파는 조건 · 안전장치 숫자를 내 생각대로 바꿉니다.
+                                            <button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-guide="copy">예시 복사하기</button></li>
+                                        <li><b>충분히 지켜본 뒤에</b> — 실제 주문(업비트 모드)은 내가 만든 봇으로, 작은 금액부터 합니다. 예시 봇은 업비트 모드에서 켜지지 않습니다.</li>
+                                    </ol>
+                                    <p class="bdg-note">예시 봇은 봇을 만드는 법을 보여 주려고 넣어 둔 교과서식 규칙입니다. 수익을 기대하고 고른 규칙이 아니고, 이렇게 쓰라고 권하는 것도 아닙니다.</p>
+                                </div>
+                                <!-- 봇이 하나도 없을 때: 현황 대신 만들기 안내 -->
+                                <div class="bots-empty" id="bots-empty">
+                                    <div class="be-icon"><i class="bi bi-robot"></i></div>
+                                    <h5>아직 봇이 없습니다</h5>
+                                    <p>이름 · 최대 투입 금액을 정하고, 매매 규칙과 안전장치를 골라 봇을 만듭니다.<br>만든 봇은 업비트·시뮬레이션 두 모드에서 함께 씁니다. 처음엔 위의 <b>시뮬레이션</b>(가상 돈)으로 지켜보는 걸 권합니다.</p>
+                                    <button type="button" class="btn btn-primary" data-new-bot><i class="bi bi-plus-lg me-1"></i>새 봇 만들기</button>
+                                </div>
+                                <!-- 전체 봇 보드: 계좌 총자산 · 봇에 나눈 돈 · 남은 돈 · 손익 합계 / 돈 나누기 막대 / 봇마다 한도 정하기 표 -->
+                                <section class="bots-board d-none" id="bots-board" aria-label="전체 봇 보드">
+                                    <div class="bb-head"><h4><i class="bi bi-grid-1x2 me-2"></i>전체 봇 보드</h4><small id="bb-sub"></small></div>
+                                    <!-- 봇 전체 현황 한 장: 위 = 중요한 값(계좌 총자산 · 총 손익 · 판 손익 · 매수 가능), 아래 = 참고 값 -->
+                                    <div class="db-card bb-summary">
+                                        <div class="bbs-main">
+                                            <div class="bbs-hero">
+                                                <span class="bbs-label"><i class="bi bi-bank"></i> 계좌 총자산</span>
+                                                <b class="bbs-total" id="bbs-total">-</b>
+                                                <div class="bbs-bar" aria-hidden="true"><i class="is-krw" id="bbs-bar-krw"></i><i class="is-coin" id="bbs-bar-coin"></i></div>
+                                                <span class="bbs-split" id="bbs-split"></span>
+                                            </div>
+                                            <div class="bbs-kpi is-pnl" title="봇들이 가진 코인의 지금 평가금액 − 산 금액">
+                                                <span class="bbs-label">총 손익</span>
+                                                <strong class="bbs-num" id="bbh-pnl">-</strong>
+                                                <span class="bbs-rate" id="bbh-rate"></span>
+                                            </div>
+                                            <div class="bbs-kpi" title="봇들이 이미 판 코인의 손익(수수료 빼기 전) 합 · 봇 거래 기록의 수수료 합 (초기화 이후)">
+                                                <span class="bbs-label">판매 후 얻은 수익</span>
+                                                <strong class="bbs-num" id="bbs-realized">-</strong>
+                                                <small class="bbs-note" id="bbs-fees"></small>
+                                            </div>
+                                            <div class="bbs-kpi" title="봇마다 운용 한도에서 남은 매수 가능 금액의 합 (계좌 원화보다 많을 수 없음)">
+                                                <span class="bbs-label">매수 가능</span>
+                                                <strong class="bbs-num" id="bbh-cash">-</strong>
+                                                <small class="bbs-note">봇들이 지금 새로 살 수 있는 돈</small>
+                                            </div>
+                                        </div>
+                                        <div class="bbs-sub">
+                                            <span><em>보유 코인</em><b id="bbh-count">-</b><small id="bbh-count-sub"></small></span>
+                                            <span><em>총 매수</em><b id="bbh-buy">-</b></span>
+                                            <span><em>총 평가</em><b id="bbh-value">-</b></span>
+                                            <span><em>봇에 배분</em><b id="bbs-alloc">-</b><small id="bbs-free"></small></span>
+                                            <span class="bbs-runs"><em>실행 중</em><b id="bbh-runs">-</b></span>
+                                        </div>
+                                    </div>
+                                    <!-- 상태 점검: 주의가 필요한 봇 (응답 없음 · 오류 · 매수 막힘 등) -->
+                                    <div class="bb-alerts" id="bb-alerts" role="status"></div>
+                                    <!-- 봇별 수익률 비교 · 최근 활동 -->
+                                    <div class="bb-mon-row">
+                                        <div class="db-card bb-compare">
+                                            <!-- 크게 보기: 늘 카드 오른쪽 위 -->
+                                            <button type="button" class="btn btn-sm pnl-expand bb-cmp-expand" id="bb-cmp-expand" title="크게 보기 (새 창)" aria-label="봇별 수익률 비교 크게 보기"><i class="bi bi-arrows-angle-expand"></i></button>
+                                            <div class="db-card-head"><h6>봇별 수익률 비교</h6><small>봇마다 · 모든 봇 · 봇 미적용(점선) · 범례를 누르면 그 선 끄고 켜기</small>
+                                                <div class="db-seg" id="bb-cmp-units" role="group" aria-label="간격"><button type="button" data-cmp="1m">1분</button><button type="button" data-cmp="10m">10분</button><button type="button" data-cmp="15m">15분</button><button type="button" data-cmp="30m">30분</button><button type="button" class="active" data-cmp="1h">1시간</button><button type="button" data-cmp="4h">4시간</button><button type="button" data-cmp="1d">일</button><button type="button" data-cmp="1w">주</button><button type="button" data-cmp="1M">월</button></div></div>
+                                            <div class="bb-cmp-body"><canvas id="bb-cmp-chart" aria-label="봇별 수익률 추이" role="img"></canvas>
+                                                <div class="db-empty d-none" id="bb-cmp-empty">봇이 코인을 가지면 1분마다 기록이 쌓입니다</div></div>
+                                        </div>
+                                        <div class="db-card bb-feed">
+                                            <div class="db-card-head"><h6>최근 활동</h6><small>모든 봇의 매수 · 매도 · 경고 · 누르면 그 봇 화면</small></div>
+                                            <ul class="bb-feed-list" id="bb-feed"></ul>
+                                        </div>
+                                    </div>
+                                    <div class="db-card">
+                                        <div class="db-card-head bb-alloc-head"><h6>자금 배분</h6><small>봇마다 계좌 총자산의 몇 %를 굴릴지 정합니다</small>
+                                            <!-- 봇 경쟁: 같은 코인을 여러 봇이 함께 사고팔기 (모드마다) -->
+                                            <label class="form-check form-switch bb-share m-0" title="켜면 같은 코인을 여러 봇이 각자 사고팝니다. 봇마다 자기 몫만 팔고, 손익도 봇마다 따로 셈해서 어떤 봇이 잘하는지 비교할 수 있습니다. 끄면 한 코인은 한 봇만 삽니다">
+                                                <input class="form-check-input" type="checkbox" id="bb-coin-share"> <span>봇 경쟁 <small>같은 코인을 여러 봇이 함께</small></span></label>
+                                            <ul class="bb-alloc-rules">
+                                                <li><i class="bi bi-calculator"></i>봇 운용 한도 = 계좌 총자산 × 배분 비율 <small>(자산이 늘면 같이 늡니다)</small></li>
+                                                <li><i class="bi bi-pie-chart"></i>모든 봇 합계 100% 이내</li>
+                                                <li><i class="bi bi-pause-circle"></i>0% = 새로 사지 않음</li>
+                                                <li><i class="bi bi-cloud-check"></i>바꾸면 바로 저장</li>
+                                            </ul></div>
+                                        <div class="bb-split-body">
+                                        <div class="bb-donut"><canvas id="bb-donut" aria-label="봇별 배분 비율"></canvas><div class="bb-donut-center" id="bb-donut-center"></div></div>
+                                        <div class="table-responsive">
+                                            <table class="table table-hover mb-0 data-table bb-table">
+                                                <thead class="table-light"><tr>
+                                                    <th>봇</th><th>상태</th><th class="bb-pct-th">배분 비율</th><th class="text-end">운용 한도</th>
+                                                    <th class="text-end">보유 평가액</th><th class="text-end">매수 가능</th><th class="text-end" title="보유코인 분석과 같은 계산: 손익 · 수익률(손익 ÷ 보유 코인 매수금액)">손익</th><th class="text-end" title="오늘(0시부터) 판 손익 + 오늘 보유 코인 손익 변화">오늘 손익</th><th class="text-end" title="판 손익 + 보유 코인 손익 · 수익률은 운용 기준 금액 대비 · 순위는 수익률 순">총 수익</th><th class="text-end" title="승률 = 판 거래 중 이긴 비율 · 아래 줄: 오늘 거래 수 · 마지막 거래">거래 · 승률</th><th></th>
+                                                </tr></thead>
+                                                <tbody id="bb-tbody"></tbody>
+                                                <tfoot id="bb-tfoot"></tfoot>
+                                            </table>
+                                        </div>
+                                        </div>
+                                    </div>
+                                </section>
+                                <!-- 고른 봇의 화면 이동: 성과 · 매수 조건 · 매도 조건 (봇 규칙, 색으로 구분) · 매매 내역 · 백테스트 · 완료
+                                     ②·③ 은 같은 화면(조건 모음 + 칸)을 쓰고 그 단계의 칸만 보여 줌 -->
+                                <ol class="builder-steps bot-nav" id="builder-steps" aria-label="봇 화면 이동">
+                                    <li data-step="0" data-bd="perf" class="is-current" data-group="현황"><span class="bs-no"><i class="bi bi-graph-up"></i></span><span class="bs-text"><b>성과</b><small>이름 · 예산 · 수익</small></span></li>
+                                    <li data-step="1.5" class="bs-rule bs-target" data-group="매매 규칙"><span class="bs-no"><i class="bi bi-bullseye"></i></span><span class="bs-text"><b>매매대상</b><small id="sn-hint-target"></small></span></li>
+                                    <li data-step="2" class="bs-rule bs-buy"><span class="bs-no"><i class="bi bi-cart-plus"></i></span><span class="bs-text"><b>매수 조건</b><small id="sn-hint-buy"></small></span></li>
+                                    <li data-step="3" class="bs-rule bs-sell"><span class="bs-no"><i class="bi bi-cash-coin"></i></span><span class="bs-text"><b>매도 조건</b><small id="sn-hint-sell"></small></span></li>
+                                    <li data-step="4" class="bs-rule bs-risk"><span class="bs-no"><i class="bi bi-shield-check"></i></span><span class="bs-text"><b>위험 관리</b><small id="sn-hint-risk"></small></span></li>
+                                    <li data-step="0" data-bd="log" data-group="기록 · 검증"><span class="bs-no"><i class="bi bi-list-ul"></i></span><span class="bs-text"><b>봇 매매 내역</b><small>사고판 기록</small></span></li>
+                                    <li data-step="0" data-bd="backtest"><span class="bs-no"><i class="bi bi-rewind"></i></span><span class="bs-text"><b>백테스트</b><small>과거로 돌려 보기</small></span></li>
+                                    <li data-step="5" class="d-none"><span class="bs-no"><i class="bi bi-check-lg"></i></span><span class="bs-text"><b>완료</b><small>확인하고 시작</small></span></li>
+                                </ol>
+                                <div id="bots-view">
+                                    <!-- 고른 봇 한눈에: 머리줄 · (필요할 때만) 안내 · 성과 4칸 · 봇이 할 일 · 보유 코인 · 최근 판단 -->
+                                    <!-- 예시 봇일 때만: 무엇인지 · 시뮬레이션 전용 · 복사해서 내 봇 만들기 -->
+                                    <div class="bd-example d-none" id="bd-example" role="note">
+                                        <i class="bi bi-mortarboard bde-icon" aria-hidden="true"></i>
+                                        <div class="bde-text"><b>봇을 만드는 법을 보여 주는 예시 봇입니다.</b> 수익을 기대하고 고른 규칙이 아니고, 시뮬레이션에서만 돌아갑니다. 복사하면 내 봇이 되어 조건과 숫자를 마음대로 고칠 수 있습니다.</div>
+                                        <button type="button" class="btn btn-sm btn-primary" id="bd-example-copy"><i class="bi bi-copy me-1"></i>복사해서 내 봇 만들기</button>
+                                    </div>
+                                    <!-- 탭 줄: 왼쪽 봇 이름 · 가운데 탭(성과 · 보유 코인 · 매매 내역 · 봇이 할 일 · 백테스트, 마지막으로 본 탭 기억) · 오른쪽 단추 -->
+                                    <div class="bd-bar">
+                                        <div class="bd-title">
+                                            <span class="bot-run-dot" id="bd-dot"></span>
+                                            <h4 id="bot-detail-title" class="bd-name-edit" contenteditable="plaintext-only" spellcheck="false" role="textbox" aria-label="봇 이름 (눌러서 고치기)" title="눌러서 이름을 고치고 Enter로 저장하실 수 있습니다.">봇</h4><i class="bi bi-pencil bd-name-pen" aria-hidden="true"></i>
+                                            <span class="bd-state" id="bot-status">멈춤</span>
+                                            <span class="bd-today" title="오늘(자정부터) 이 봇이 사고판 횟수 · 괄호는 처음부터 전체">오늘 거래 <b id="bdt-today">0</b>번 <small>(전체 매수 <span id="bdt-buys">0</span> · 매도 <span id="bdt-sells">0</span>)</small></span>
+                                            <input type="hidden" id="bot-name">
+                                        </div>
+                                        <div class="bd-actions">
+                                            <!-- 매수 · 매도 켜기/끄기 (모드마다 따로, 매도를 꺼도 손절은 계속) -->
+                                            <div class="bd-switches" role="group" aria-label="매수 · 매도 켜기/끄기">
+                                                <button type="button" class="bd-sw" data-trade-switch="buy_on" aria-pressed="true" title="매수 켜기 · 끄기"><i class="bd-sw-dot"></i>매수 <b>켜짐</b></button>
+                                                <button type="button" class="bd-sw" data-trade-switch="sell_on" aria-pressed="true" title="매도 켜기 · 끄기 (손절은 계속)"><i class="bd-sw-dot"></i>매도 <b>켜짐</b></button>
+                                            </div>
+                                            <button type="button" class="btn btn-sm bd-toggle" id="bd-toggle"><i class="bi bi-play-fill"></i> 시작</button>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-copy-bot" title="봇 복제" aria-label="복제"><i class="bi bi-copy"></i><span class="bd-btn-label">복제</span></button>
+                                            <!-- 다른 모드로 보내기: 시뮬레이션에서 시험한 봇을 업비트로 (봇은 모드마다 따로 만들고 지움) -->
+                                            <button type="button" class="btn btn-sm btn-outline-primary bd-send-btn" id="btn-send-bot"><i class="bi bi-send"></i><span class="bd-btn-label"></span></button>
+                                            <button type="button" class="btn btn-sm btn-outline-warning d-none bd-reset-btn" id="btn-reset-bot" aria-label="모두 팔고 새로 시작" title="모두 팔고 새로 시작"><i class="bi bi-arrow-repeat"></i><span class="bd-btn-label">모두 팔고 새로 시작</span></button>
+                                            <button type="button" class="btn btn-sm btn-outline-danger" id="btn-delete-bot" title="봇 지우기" aria-label="이 봇 지우기"><i class="bi bi-trash3"></i></button>
+                                        </div>
+                                    </div>
+                                    <div class="bd-pane" data-bd-pane="perf" role="tabpanel">
+                                    <!-- 성과 탭: 숫자 4칸 · 큰 차트(수익 추이 ↔ 고른 코인 캔들) + 가능 운용 금액 도넛 · 보유 코인 표 -->
+                                    <div class="db-kpis">
+                                        <div class="db-card db-kpi">
+                                            <div class="db-label">총 수익</div>
+                                            <div class="db-big"><span id="total-profit">+0.00%</span><i class="bi bi-arrow-up-right db-trend" id="bd-trend"></i></div>
+                                            <div class="db-sub" id="bd-profit-krw">-</div>
+                                        </div>
+                                        <div class="db-card db-kpi">
+                                            <div class="db-label">지금 가치</div>
+                                            <div class="db-big" id="bd-equity">-</div>
+                                            <div class="db-sub" id="bd-budget">-</div>
+                                        </div>
+                                        <div class="db-card db-kpi">
+                                            <div class="db-label">승률</div>
+                                            <div class="db-big" id="bd-winrate">-</div>
+                                            <div class="db-sub"><div class="db-winbar" aria-hidden="true"><span id="bd-winbar"></span></div><span id="bd-winloss">이긴 0 · 진 0</span></div>
+                                        </div>
+                                        <div class="db-card db-kpi">
+                                            <div class="db-label">오늘 거래</div>
+                                            <div class="db-big"><span id="bd-today">0</span><small>번</small></div>
+                                            <div class="db-sub">전체 매수 <b id="bd-buys">0</b> · 매도 <b id="bd-sells">0</b> · 보유 <b id="active-positions">0</b>/<span id="bd-max-pos">-</span>개</div>
+                                        </div>
+                                    </div>
+                                    <!-- 현재 설정: 저장된 이 모드의 규칙 · 돈 관리 · 안전장치를 한눈에 (편집 중인 값이 아니라 서버에 저장된 값) -->
+                                    <div class="bd-fold-sec" id="bd-set-sec">
+                                    <div class="bd-fold-head" id="bd-set-fold-head" role="button" tabindex="0" aria-expanded="true" aria-controls="bd-set-card">
+                                        <i class="bi bi-sliders2"></i><b>현재 설정</b><small class="bd-set-sub" id="bd-set-sub"></small><span class="ip-fold" id="bd-set-fold"><span>접기</span><i class="bi bi-chevron-up"></i></span></div>
+                                    <div class="db-card bd-set-card" id="bd-set-card"></div>
+                                    </div>
+                                    <!-- 수익률 변화 · 운용 한도: 제목 줄을 누르면 접기 · 펼치기 (이 PC에 기억) -->
+                                    <div class="bd-fold-sec" id="bd-chart-sec">
+                                    <div class="bd-fold-head" id="bd-chart-fold-head" role="button" tabindex="0" aria-expanded="true" aria-controls="bd-chart-row">
+                                        <i class="bi bi-graph-up-arrow"></i><b>수익률 변화 · 운용 한도</b><span class="ip-fold" id="bd-chart-fold"><span>접기</span><i class="bi bi-chevron-up"></i></span></div>
+                                    <div class="db-row" id="bd-chart-row">
+                                        <div class="db-card db-wide">
+                                            <!-- 큰 차트 칸 하나: 평소 = 수익 추이, 아래 표나 도넛에서 코인을 누르면 그 코인 캔들 -->
+                                            <div class="db-card-head bd-chart-head">
+                                                <div class="db-seg bd-view" id="bd-view" role="group" aria-label="차트 보기"><button type="button" data-view="equity" class="active">수익률 변화</button><button type="button" data-view="coin" class="d-none" id="bd-view-coin" title="고른 코인의 캔들이며, ×를 누르면 닫힙니다."><span></span><i class="bi bi-x-lg" data-view-close aria-label="코인 차트 닫기"></i></button></div>
+                                                <div class="bd-pnl-ctrl" id="bd-range">
+                                                    <div class="btn-group btn-group-sm" role="group" aria-label="수익률 간격">
+                                                        <button type="button" class="btn btn-outline-secondary active" data-bd-interval="1m">1분</button><button type="button" class="btn btn-outline-secondary" data-bd-interval="10m">10분</button><button type="button" class="btn btn-outline-secondary" data-bd-interval="15m">15분</button><button type="button" class="btn btn-outline-secondary" data-bd-interval="30m">30분</button><button type="button" class="btn btn-outline-secondary" data-bd-interval="1h">1시간</button><button type="button" class="btn btn-outline-secondary" data-bd-interval="4h">4시간</button><button type="button" class="btn btn-outline-secondary" data-bd-interval="1d">일</button><button type="button" class="btn btn-outline-secondary" data-bd-interval="1w">주</button><button type="button" class="btn btn-outline-secondary" data-bd-interval="1M">월</button><button type="button" class="btn btn-outline-secondary" data-bd-interval="1y">년</button>
+                                                    </div>
+                                                    <select class="form-select form-select-sm w-auto" id="bd-pnl-coin" aria-label="코인"><option value="ALL">전체 (총 수익률)</option></select>
+                                                </div>
+                                                <small class="bd-pnl-info" id="bd-chart-sub"></small></div>
+                                            <div class="bd-pnl-legend d-none" id="bd-pnl-legend" aria-live="polite"></div>
+                                            <div class="db-chart"><canvas id="bd-chart" aria-label="수익률 변화 그래프"></canvas>
+                                                <div class="db-empty d-none" id="bd-chart-empty"></div></div>
+                                            <div class="db-hold-chart bd-hold-top d-none" id="bd-hold-chart"></div>
+                                        </div>
+                                        <div class="db-card">
+                                            <!-- 가능 운용 금액(고치면 자동 저장) + 그 돈이 코인 · 남은 돈으로 어떻게 나뉘었는지 -->
+                                            <div class="db-card-head bd-budget-head"><h6>운용 한도</h6>
+                                                <!-- 가능 운용 금액(이 봇이 코인에 넣어 둘 최대 금액, 0 = 제한 없음) · 이름은 위 제목에서 고침 (숨은 칸에 넣어 저장) -->
+                                            <span class="bd-budget-ro" id="bd-budget-ro"></span><button type="button" class="btn btn-link btn-sm bd-budget-go" data-open-board>자금 배분에서 변경 <i class="bi bi-arrow-right"></i></button>
+                                                <div class="db-seg bd-budget-unit d-none" id="budget-unit-seg" role="group" aria-label="한도 정하는 방식"><button type="button" data-budget-unit="won" class="active" title="금액으로: 시작 금액 + 판 손익만큼 한도가 늘거나 줍니다">금액</button><button type="button" data-budget-unit="pct" title="계좌 %로: 계좌 총자산(원화 + 코인)의 몇 %를 이 봇이 씁니다 · 계좌가 불어나면 한도도 같이 · 봇들 합계 100%까지">계좌 %</button></div>
+                                                <label class="bd-budget d-none" for="initial-balance" title="이 봇에 맡기는 돈이며(0이면 새로 사지 않고 가진 코인만 팝니다), 눌러서 고치실 수 있습니다."><span class="bd-budget-pre" id="budget-pre">시작</span><input type="text" inputmode="numeric" class="form-control form-control-sm text-end money-input" id="initial-balance" value="1,000,000" autocomplete="off"><input type="number" class="form-control form-control-sm text-end d-none" id="budget-pct" min="0" max="100" step="1" aria-label="계좌 총자산의 몇 %"><span id="budget-unit">원</span><small class="bd-budget-won d-none" id="budget-pct-won"></small></label>
+                                            </div>
+                                            <small class="bd-hold-total" id="bd-hold-total"></small>
+                                            <!-- 범례(왼쪽) + 도넛(오른쪽) 나란히 — 보유코인 분석 '보유 비중'과 같은 모양 -->
+                                            <div class="db-donut-row">
+                                            <div class="db-legend" id="bd-legend"></div>
+                                            <div class="db-donut"><canvas id="bd-donut" aria-label="보유 코인 비중"></canvas><div class="db-donut-center" id="bd-donut-center"></div>
+                                                <div class="db-empty d-none" id="bd-donut-empty"><i class="bi bi-pie-chart"></i>가진 코인이 없습니다</div></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    </div>
+                                    <div class="db-card bd-hold-card">
+                                        <div class="db-card-head"><h6>보유 코인<span class="bd-tab-n" id="bd-tab-n-hold"></span></h6><small>이 봇이 산 코인 · 맡긴 코인만 팝니다 · 줄을 누르면 위 차트가 그 코인 캔들로</small>
+                                            <input type="search" class="form-control form-control-sm bd-hold-search" id="bd-hold-search" placeholder="코인명·심볼 검색 (초성 가능)" aria-label="보유 코인 검색" autocomplete="off">
+                                            <button type="button" class="btn btn-sm btn-outline-primary bd-adopt-btn" data-adopt-open title="계좌에 이미 가진 코인을 이 봇에 맡기면, 매수 조건 없이도 매도 조건 · 손절 · 익절로 팝니다"><i class="bi bi-box-arrow-in-down me-1"></i>보유 코인 맡기기</button></div>
+                                        <!-- 이 봇이 가진 코인 요약 (보유코인 분석 맨 위와 같은 모양): 보유 코인 | 총 매수 | 총 평가 | 평가손익 | 평가수익률 | 매수 가능 금액 -->
+                                        <div class="mk-strip bd-hold-strip"><div class="mk-strip-body">
+                                            <div class="mk-stat hd-count-stat"><span class="mk-label">보유 코인</span><b id="bdh-count">-</b><small class="hd-count-sub" id="bdh-count-sub"></small></div>
+                                            <div class="mk-stat"><span class="mk-label">총 매수</span><b id="bdh-buy">-</b></div>
+                                            <div class="mk-stat"><span class="mk-label">총 평가</span><b id="bdh-value">-</b></div>
+                                            <div class="mk-stat"><span class="mk-label">총 손익</span><strong class="hd-pnl" id="bdh-pnl">-</strong></div>
+                                            <div class="mk-stat"><span class="mk-label">총 수익률</span><span class="hd-rate" id="bdh-rate">-</span></div>
+                                            <div class="mk-stat"><span class="mk-label">매수 가능 금액</span><b id="bdh-cash">-</b></div>
+                                        </div></div>
+                                        <div class="table-responsive table-scroll bd-hold-scroll">
+                                            <table class="table table-hover mb-0 data-table" id="bd-hold-table">
+                                                <thead class="table-light">
+                                                    <tr>
+                                                        <th data-sort="alert_level" title="상폐 · 유의 · 입출금 중단 · 주의 · 공지 표시이며, 누르면 위험한 순으로 정렬됩니다.">알림</th>
+                                                        <th data-sort="korean_name" title="아래 줄: 보유 수량">코인</th>
+                                                        <th id="bd-hold-spark-header" title="정렬 중인 기간의 종가 추이">추이 (30일)</th>
+                                                        <th class="text-end" data-sort="current_price" title="지금 가격">현재가</th>
+                                                        <th class="text-end" data-sort="avg_buy_price" title="봇이 산 평균 가격">매수가</th>
+                                                        <th class="text-end" data-sort="change_rate" title="업비트 기준 전일 종가(오전 9시) 대비 등락률">전일대비</th>
+                                                        <th class="text-end grp" data-sort="current_value" title="아래 줄: 투자금(매수금액)">평가금액</th>
+                                                        <th class="text-end" data-sort="pnl_rate" title="매수가 대비 수익률 · 아래 줄: 손익">수익률</th>
+                                                        <th class="text-end grp" data-sort="low_d1_rate" title="최근 24시간 최저가보다 현재가가 몇 % 높은지">전일저점</th>
+                                                        <th class="text-end" data-sort="low_w1_rate" title="최근 7일 최저가 대비">주간저점</th>
+                                                        <th class="text-end" data-sort="low_m1_rate" title="최근 30일 최저가 대비">월간저점</th>
+                                                        <th class="text-end" data-sort="low_h6_rate" title="최근 6개월(26주) 최저가 대비">6개월</th>
+                                                        <th class="text-end" data-sort="low_y1_rate" title="최근 1년(52주) 최저가 대비. 0%에 가까우면 1년 바닥 근처">연간저점</th>
+                                                        <th class="text-end grp" data-sort="trade_value_24h" title="최근 24시간 동안 업비트에서 거래된 금액 (백만 원)">거래대금</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="bd-hold-tbody"></tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                    </div>
+                                    <div class="bd-pane d-none" data-bd-pane="log" role="tabpanel">
+                                    <!-- 매매 내역(표, 코인을 누르면 차트) — 판단 기록 탭은 내용이 적어 없앰 (2026-10-09) -->
+                                    <div class="db-card">
+                                        <div class="db-card-head"><h6>봇 매매 내역</h6><small id="bd-log-hint">이 봇이 사고판 기록 · 코인을 누르면 매수·매도가 표시된 캔들차트</small>
+                                            <input type="search" class="form-control form-control-sm bd-log-search" id="bd-log-search" placeholder="코인명·심볼(초성) · 이유 검색" aria-label="매매 내역 검색" autocomplete="off">
+                                            <button type="button" class="btn btn-sm btn-outline-primary bd-log-refresh" id="bd-log-refresh" title="매매 내역을 지금 다시 읽습니다 (평소에도 3초마다 저절로 새로 받습니다)"><i class="bi bi-arrow-clockwise"></i> 새로고침</button></div>
+                                        <div class="db-trades" id="bd-trades"></div>
+                                    </div>
+                                    </div>
+                                    <div class="bd-pane d-none" data-bd-pane="backtest" role="tabpanel">
+                                    <!-- 백테스트: 이 봇의 규칙을 한 코인 · 한 봉 단위 · 한 기간의 과거 캔들로 다시 돌려 봄 -->
+                                    <div class="db-card">
+                                        <div class="db-card-head"><h6>백테스트</h6><small>이 봇의 규칙을 한 코인의 과거 캔들로 다시 돌려 봅니다 · 받은 캔들은 이 PC에 저장해 다음엔 빈 구간만 받습니다</small></div>
+                                        <div class="bt-form">
+                                            <div class="bt-field">
+                                                <label for="bt-coin">코인</label>
+                                                <input type="search" class="form-control form-control-sm" id="bt-coin" list="bt-coin-list" placeholder="예: BTC, 리플" autocomplete="off">
+                                                <datalist id="bt-coin-list"></datalist>
+                                            </div>
+                                            <div class="bt-field">
+                                                <label>봉 단위 <span class="bt-tip">= 봇이 확인하는 간격</span></label>
+                                                <div class="hc-units bt-units" id="bt-units" role="group" aria-label="봉 단위"></div>
+                                            </div>
+                                            <div class="bt-field">
+                                                <label>기간 <span class="bt-tip" id="bt-limit"></span></label>
+                                                <div class="bt-period">
+                                                    <div class="hc-units" id="bt-presets" role="group" aria-label="기간 빨리 고르기"></div>
+                                                    <input type="date" class="form-control form-control-sm" id="bt-start" aria-label="시작 날짜">
+                                                    <span class="text-muted">~</span>
+                                                    <input type="date" class="form-control form-control-sm" id="bt-end" aria-label="끝 날짜">
+                                                </div>
+                                            </div>
+                                            <div class="bt-field">
+                                                <label for="bt-krw">시작 금액(원)</label>
+                                                <input type="number" class="form-control form-control-sm" id="bt-krw" min="10000" step="10000">
+                                            </div>
+                                            <button type="button" class="btn btn-primary btn-sm bt-run" id="bt-run"><i class="bi bi-play-fill"></i> 백테스트 시작</button>
+                                        </div>
+                                        <div class="bt-skip" id="bt-skip"></div>
+                                        <div class="bt-progress d-none" id="bt-progress">
+                                            <div class="progress" role="progressbar" aria-label="백테스트 진행"><div class="progress-bar progress-bar-striped progress-bar-animated" id="bt-progress-bar" style="width:0%"></div></div>
+                                            <small id="bt-progress-text"></small>
+                                        </div>
+                                    </div>
+                                    <div class="d-none" id="bt-result">
+                                        <div class="sv-kpis bt-kpis" id="bt-kpis"></div>
+                                        <div class="db-card bt-card">
+                                            <div class="db-card-head"><h6>자산 변화</h6><small id="bt-curve-sub">봇 적용 vs 봇 미적용</small></div>
+                                            <div class="sv-chart bt-curve"><canvas id="bt-curve" aria-label="자산 변화 그래프"></canvas></div>
+                                        </div>
+                                        <div class="db-card bt-card">
+                                            <div class="db-card-head"><h6 id="bt-chart-title">매수 · 매도</h6><small id="bt-chart-sub"></small></div>
+                                            <div class="tx-chart bt-chart" id="bt-chart"></div>
+                                            <div class="tx-foot">
+                                                <span class="lg-buy">▲ 매수</span><span class="lg-sell">▼ 매도</span>
+                                                <span class="tx-hint" id="bt-hint">화살표를 누르면 아래 표에서 그 거래를 찾아 줍니다 · 표의 줄을 누르면 차트에 크게 표시됩니다</span>
+                                            </div>
+                                            <div class="bt-table-wrap">
+                                                <table class="table table-sm db-trade-table mb-0" id="bt-table">
+                                                    <thead><tr><th>시간</th><th>구분</th><th class="text-end">가격</th><th class="text-end">금액</th><th class="text-end">손익</th><th>이유</th></tr></thead>
+                                                    <tbody id="bt-tbody"></tbody>
+                                                </table>
+                                            </div>
+                                            <details class="bt-events d-none" id="bt-events"><summary></summary><ul></ul></details>
+                                        </div>
+                                        <p class="bt-foot" id="bt-foot"></p>
+                                    </div>
+                                    </div>
+                                </div>
+                                <!-- 봇 만들기·고치기: ① 기본 봇 정보 ② 매수 조건 ③ 매도 조건 · 완료 (입력하면 그 봇에 자동 저장) -->
+                                <div class="d-none" id="set-builder">
+                            <div class="builder-wizard" id="builder-wizard">
+                                <div class="builder-head">
+                                    <div><div class="builder-kicker" id="builder-kicker">새 봇 만들기</div><h4 class="mb-0" id="builder-title">새 봇</h4></div>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" id="builder-cancel">닫기</button>
+                                </div>
+                                <div class="builder-step d-none" data-step-pane="2">
+                            <div class="card" id="bot-rules-card">
+                            <div class="card-header">
+                                <!-- 위험 관리 · 돈 관리와 같은 모양: 아이콘 상자 + 제목 + 모드 표시, 아래 한 줄 설명 -->
+                                <div class="rp-head"><span class="rp-icon" id="rules-pane-icon"><i class="bi bi-cart3"></i></span>
+                                    <div><h5 class="mb-0"><span id="rules-pane-title">봇 매매 규칙</span> <span class="rules-mode-chip" id="rules-mode-chip"></span></h5>
+                                    <p id="rules-pane-sub"></p></div></div>
+                                <button type="button" class="btn btn-sm btn-outline-secondary rules-copy-btn" id="rules-copy-mode" data-copy-mode></button>
+                            </div>
+                            <div class="card-body">
+                                <!-- 매수(또는 매도)를 꺼 두었을 때 이 칸 위에 알림 -->
+                                <div class="trade-off-note d-none" id="trade-off-note" role="status"></div>
+                                <div class="rk-moved" data-side-only="buy"><i class="bi bi-wallet2"></i><span>한 번에 얼마씩 · 몇 개까지는 <a href="#" data-builder-step="4">위험 관리</a>에서, 어떤 코인 중에서 살지는 <a href="#" data-builder-step="1.5">매매대상</a>에서 정합니다 <small id="mc-moved-now"></small></span></div>
+                                <div class="rule-builder mb-3">
+                                    <!-- 조건 모음: 기본 조건 / 패턴 / 나의 조건 -->
+                                    <div class="rule-palette" data-drop-palette>
+                                        <div class="rule-palette-head">
+                                            <div class="cond-tabs" id="rule-palette-tabs" role="tablist" aria-label="조건 종류">
+                                                <button type="button" class="cond-tab active" data-palette-tab="basic" role="tab"><i class="bi bi-grid-3x3-gap"></i> 기본 조건 <span class="rp-count" id="rp-count-basic"></span></button>
+                                                <button type="button" class="cond-tab" data-palette-tab="pattern" role="tab"><i class="bi bi-bounding-box-circles"></i> 패턴 <span class="rp-count" id="rp-count-pattern"></span></button>
+                                                <button type="button" class="cond-tab" data-palette-tab="mine" role="tab"><i class="bi bi-stars"></i> 나의 조건 <span class="rp-count" id="rp-count-mine"></span></button>
+                                            </div>
+                                            <div class="rp-search"><i class="bi bi-search" aria-hidden="true"></i><input type="search" class="form-control form-control-sm" id="rule-palette-search" placeholder="조건 이름 검색 (영어도: MA · BB · RSI …)" aria-label="조건 이름 검색" autocomplete="off"></div>
+                                        </div>
+                                        <div class="rule-palette-list" id="rule-palette-list"></div>
+                                    </div>
+                                    <!-- 매수·매도 칸 -->
+                                    <div class="rule-zones">
+                                        <!-- 매매대상: 어떤 코인 중에서 사고팔지 (코인 성격 · 직접 고른 코인 · 사지 않을 코인 · 이런 코인도 매수) -->
+                                        <div class="rule-zone rule-zone-target">
+                                            <div class="rule-zone-head"></div>
+                                            <div class="rule-drop" data-side="target" id="rule-zone-target" aria-label="매매대상 칸"></div>
+                                        </div>
+                                        <!-- 매매대상 칸 바깥: 사지 않을 코인 · 이런 코인도 매수 (따로 놓인 카드) -->
+                                            <div class="tgt-extra" aria-label="매매대상 · 사지 않을 코인 · 이런 코인도 매수">
+                                            <section class="tgt-box">
+                                                <h6><i class="bi bi-slash-circle"></i> 사지 않을 코인 <small>적은 코인은 조건에 맞아도 사지 않습니다</small></h6>
+                                                <!-- 코인을 찾아 고르면 뱃지로 (직접 고른 코인과 같은 모양) -->
+                                                <div class="tgt-only-pick ex-pick">
+                                                    <input type="search" class="form-control form-control-sm" id="rule-exclude-q" placeholder="코인명 · 심볼로 찾아 넣기 (초성 가능)" autocomplete="off" spellcheck="false">
+                                                    <div class="tgt-only-list d-none" id="rule-exclude-list"></div>
+                                                </div>
+                                                <div class="tgt-chips ex-chips" id="rule-exclude-chips"></div>
+                                            </section>
+                                            <section class="tgt-box">
+                                                <!-- 이런 코인도 매수: 체크 = 사도 됨 (기본 꺼짐 = 사지 않음). 업비트(실제 돈)에서 켤 때는 한 번 더 묻기 -->
+                                                <div class="mc-skip" id="mc-skip">
+                                                <span class="mc-skip-label"><i class="bi bi-plus-circle"></i> 이런 코인도 매수 <small>(기본은 사지 않음 · 켜면 조건에 맞을 때 삼)</small></span>
+                                                <label class="form-check form-check-inline m-0"><input class="form-check-input" type="checkbox" data-skip-kind="include_stable"> 스테이블코인</label>
+                                                <label class="form-check form-check-inline m-0"><input class="form-check-input" type="checkbox" data-skip-kind="allow_warning"> 유의 종목</label>
+                                                <label class="form-check form-check-inline m-0"><input class="form-check-input" type="checkbox" data-skip-kind="allow_delist"> 상장폐지 예정</label>
+                                                <small class="mc-skip-note">시뮬레이션 · 업비트 따로 저장됩니다 (지금 보고 있는 모드에만 적용)</small>
+                                            </div>
+                                            </section>
+                                        </div>
+                                        <div class="rule-zone rule-zone-buy">
+                                            <div class="rule-zone-head"><span class="role-badge role-buy is-static">매수</span> 이 조건 중 <b>하나에라도 새로 들어온</b> 코인을 삼</div>
+                                            <div class="rule-drop" data-side="buy" id="rule-zone-buy" aria-label="매수 조건 칸"></div>
+                                            <!-- 시뮬레이션: 시작할 때 거래 상위 N개(또는 전체)를 한꺼번에 사기 — 매도 규칙(급등 세트 등)을 빨리 시험 -->
+                                            <!-- 새로 켜는 길은 없앰 ('처음에 사 둘 코인'이 대신함). 이미 개수를 정해 둔 봇만 이 상자가 보여 끌 수 있음 -->
+                                            <div class="seed-box d-none" id="seed-box">
+                                                <div class="seed-head"><i class="bi bi-cart-plus"></i><b>시작할 때 한꺼번에 사기</b><span class="seed-tag">시뮬레이션</span>
+                                                    <button type="button" class="seed-close" id="seed-close">안 쓰고 접기</button></div>
+                                                <div class="seed-ctrl">
+                                                    <span class="tf-seg seed-seg" role="group" aria-label="한꺼번에 살 코인 수">
+                                                        <button type="button" data-seed="0">안 함</button><button type="button" data-seed="10">10개</button><button type="button" data-seed="30">30개</button><button type="button" data-seed="50">50개</button><button type="button" data-seed="100">100개</button><button type="button" data-seed="-1">전체</button>
+                                                    </span>
+                                                    <label class="seed-custom">직접 <input type="number" class="form-control form-control-sm" id="seed-custom" min="1" max="300" step="1" placeholder="-" aria-label="직접 넣는 코인 수"> 개</label>
+                                                    <input type="hidden" id="seed-top" value="0">
+                                                </div>
+                                                <div class="seed-info" id="seed-info"></div>
+                                            </div>
+                                        </div>
+                                        <div class="rule-zone rule-zone-sell">
+                                            <div class="rule-zone-head"><span class="role-badge role-sell is-static">매도</span> 봇이 산 코인이 이 조건 중 <b>하나에라도 맞으면</b> 팜</div>
+                                            <div class="rule-drop" data-side="sell" id="rule-zone-sell" aria-label="매도 조건 칸"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <!-- 안전장치: 돈 관리는 위 한 줄(매수 조건에서만), 파는 쪽(언제 팔까)은 ③ 매도 조건에서 -->
+
+                                <div class="rk-moved" data-side-only="sell"><i class="bi bi-shield-check"></i><span>손절 · 익절 · 트레일링 · 하루 손실 한도는 <a href="#" data-builder-step="4">위험 관리</a>에서 정합니다 <small id="rk-moved-now"></small></span></div>
+                                <div class="rk-foot">
+                                    <span><i class="bi bi-info-circle"></i> 같은 코인은 주문 후 60초 안에 다시 사고팔지 않습니다 (손절·익절은 예외)</span>
+                                    <span><i class="bi bi-cloud-check"></i> <span id="rule-save-status">바꾼 값은 [적용하기]를 눌러야 봇에 반영됩니다.</span></span>
+                                </div>
+                            </div>
+                            </div>
+                                </div>
+                                <!-- ④ 위험 관리: 손절 · 익절 · 트레일링 · 하루 손실 한도 + 추천 묶음 · 최악의 경우 · 보유 코인 손절까지 · 검증 근거 -->
+                                <div class="builder-step d-none" data-step-pane="3">
+                                    <div class="card risk-pane"><div class="card-body">
+                                        <!-- 위험 관리 한 카드 (청록 줄): 추천 묶음 → 언제 팔까 · 한도 → 돈 관리 → 보유 코인 거리 -->
+                                        <section class="rp-block" aria-label="위험 관리">
+                                        <div class="rp-head"><span class="rp-icon"><i class="bi bi-shield-check"></i></span>
+                                            <div><h5>위험 관리 <span class="rules-mode-chip" id="risk-mode-chip"></span><button type="button" class="rp-proof-q" data-bs-toggle="modal" data-bs-target="#risk-proof-modal" title="추천 묶음의 근거 보기"><i class="bi bi-question-circle"></i> 추천 근거</button></h5>
+                                            <p>봇이 <b>한 코인에서</b>, <b>하루에</b>, <b>전체로</b> 얼마나 잃을 수 있는지 정합니다 (매도 조건과 별도로 늘 지켜집니다). 묶음을 고르면 아래 숫자가 한 번에 바뀌고, 칸마다 직접 고쳐도 됩니다.</p></div></div>
+                                        <!-- 묶음 = 탭: 고른 카드가 아래 판(언제 팔까 · 한도 · 돈 관리)과 이어져 그 묶음의 자세한 숫자임을 보여 줌 -->
+                                        <div class="rp-pre-wrap" id="risk-pre-wrap">
+                                        <div class="rp-pre-grid" id="risk-presets" role="radiogroup" aria-label="위험 관리 묶음 고르기">
+                                            <button type="button" role="radio" aria-checked="false" class="rp-pre is-safe" data-risk-preset="safe">
+                                                <span class="rp-pre-top"><span class="rp-pre-radio" aria-hidden="true"></span><span class="rp-pre-ic"><i class="bi bi-shield-check"></i></span>
+                                                    <span class="rp-pre-name"><b>보수적</b><small>덜 잃고 덜 법니다 · 하락장에 유리</small></span>
+                                                    </span>
+                                                <span class="rp-pre-range" aria-hidden="true"><span class="rp-pre-l"><i style="width:50%"></i></span><span class="rp-pre-r"><i style="width:30%"></i></span></span>
+                                                <span class="rp-pre-rl"><span class="is-loss">손절 −15%</span><span class="is-gain">익절 +30%</span></span>
+                                                <span class="rp-pre-stats"><span><small>1회 매수</small><b>3%</b></span><span><small>최대 보유</small><b>15개</b></span><span><small>하루 한도</small><b>−5%</b></span></span>
+                                                <span class="rp-pre-foot"><span class="is-off-txt">이걸로 하기</span><span class="is-on-txt"><i class="bi bi-check-circle-fill"></i> 지금 쓰는 중</span></span>
+                                            </button>
+                                            <button type="button" role="radio" aria-checked="false" class="rp-pre is-balanced" data-risk-preset="balanced">
+                                                <span class="rp-pre-top"><span class="rp-pre-radio" aria-hidden="true"></span><span class="rp-pre-ic"><i class="bi bi-sliders"></i></span>
+                                                    <span class="rp-pre-name"><b>균형 <em>추천</em></b><small>지난 검증 세 번 모두 무난했습니다</small></span>
+                                                    </span>
+                                                <span class="rp-pre-range" aria-hidden="true"><span class="rp-pre-l"><i style="width:67%"></i></span><span class="rp-pre-r"><i style="width:50%"></i></span></span>
+                                                <span class="rp-pre-rl"><span class="is-loss">손절 −20%</span><span class="is-gain">익절 +50%</span></span>
+                                                <span class="rp-pre-stats"><span><small>1회 매수</small><b>4%</b></span><span><small>최대 보유</small><b>25개</b></span><span><small>하루 한도</small><b>−10%</b></span></span>
+                                                <span class="rp-pre-foot"><span class="is-off-txt">이걸로 하기</span><span class="is-on-txt"><i class="bi bi-check-circle-fill"></i> 지금 쓰는 중</span></span>
+                                            </button>
+                                            <button type="button" role="radio" aria-checked="false" class="rp-pre is-bold" data-risk-preset="bold">
+                                                <span class="rp-pre-top"><span class="rp-pre-radio" aria-hidden="true"></span><span class="rp-pre-ic"><i class="bi bi-rocket-takeoff"></i></span>
+                                                    <span class="rp-pre-name"><b>공격적</b><small>오를 때 더 벌지만 크게 잃을 수 있습니다</small></span>
+                                                    </span>
+                                                <span class="rp-pre-range" aria-hidden="true"><span class="rp-pre-l"><i style="width:100%"></i></span><span class="rp-pre-r"><i style="width:100%"></i></span></span>
+                                                <span class="rp-pre-rl"><span class="is-loss">손절 −30%</span><span class="is-gain">익절 +100%</span></span>
+                                                <span class="rp-pre-stats"><span><small>1회 매수</small><b>6%</b></span><span><small>최대 보유</small><b>30개</b></span><span><small>하루 한도</small><b>−15%</b></span></span>
+                                                <span class="rp-pre-foot"><span class="is-off-txt">이걸로 하기</span><span class="is-on-txt"><i class="bi bi-check-circle-fill"></i> 지금 쓰는 중</span></span>
+                                            </button>
+                                            <!-- 직접 설정: 아래 칸을 하나라도 고치면 저절로 이 카드 (숫자는 지금 칸 값 · 다른 묶음을 고른 동안에는 마지막으로 직접 정한 값) -->
+                                            <button type="button" role="radio" aria-checked="false" class="rp-pre is-custom" data-risk-preset="custom">
+                                                <span class="rp-pre-top"><span class="rp-pre-radio" aria-hidden="true"></span><span class="rp-pre-ic"><i class="bi bi-pencil-square"></i></span>
+                                                    <span class="rp-pre-name"><b>직접 설정</b><small id="rp-custom-sub">칸마다 원하는 숫자로 정합니다</small></span>
+                                                    </span>
+                                                <span class="rp-pre-range" aria-hidden="true"><span class="rp-pre-l"><i id="rp-custom-l" style="width:0%"></i></span><span class="rp-pre-r"><i id="rp-custom-r" style="width:0%"></i></span></span>
+                                                <span class="rp-pre-rl"><span class="is-loss" id="rp-custom-sl">손절 -</span><span class="is-gain" id="rp-custom-tp">익절 -</span></span>
+                                                <span class="rp-pre-stats"><span><small>1회 매수</small><b id="rp-custom-size">-</b></span><span><small>최대 보유</small><b id="rp-custom-pos">-</b></span><span><small>하루 한도</small><b id="rp-custom-daily">-</b></span></span>
+                                                <span class="rp-pre-foot"><span class="is-off-txt">이걸로 하기</span><span class="is-on-txt"><i class="bi bi-check-circle-fill"></i> 지금 쓰는 중</span></span>
+                                            </button>
+                                        </div>
+                                        <p class="rk-example" id="rk-example"></p>
+                                        <div class="rp-pre-panel">
+                                        <div class="rp-pre-panel-head" id="risk-pre-head"></div>
+                                        <div class="rp-grid">
+                                <div class="risk-groups">
+                                    <section class="rk-group is-sell" aria-labelledby="rk-sell-title">
+                                        <header class="rk-head">
+                                            <span class="rk-icon"><i class="bi bi-cash-coin"></i></span>
+                                            <div><h6 id="rk-sell-title">언제 팔까</h6><p>파는 조건과 별도로, 산 값과 비교해 자동으로 팝니다</p></div>
+                                        </header>
+                                        <div class="rk-field is-loss">
+                                            <label class="form-label" for="stop-loss" title="산 값보다 이만큼 내리면 팝니다 · 0 = 사용 안 함">손절</label>
+                                            <div class="input-group input-group-sm"><span class="input-group-text">−</span><input type="number" class="form-control" id="stop-loss" value="5" step="0.1"><span class="input-group-text">%</span></div>
+                                            <small class="rk-hint">산 값보다 이만큼 내리면 팝니다 · 0 = 사용 안 함</small>
+                                        </div>
+                                        <div class="rk-field is-gain">
+                                            <label class="form-label" for="take-profit" title="산 값보다 이만큼 오르면 팝니다 · 0 = 사용 안 함">익절</label>
+                                            <div class="input-group input-group-sm"><span class="input-group-text">+</span><input type="number" class="form-control" id="take-profit" value="10" step="0.1"><span class="input-group-text">%</span></div>
+                                            <small class="rk-hint">산 값보다 이만큼 오르면 팝니다 · 0 = 사용 안 함</small>
+                                        </div>
+                                        <div class="rk-field">
+                                            <label class="form-label" for="trailing-stop" title="산 뒤 가장 높았던 값에서 이만큼 내려오면 팝니다 · 0 = 안 씀">트레일링</label>
+                                            <div class="input-group input-group-sm"><input type="number" class="form-control" id="trailing-stop" value="0" min="0" step="0.1"><span class="input-group-text">%</span></div>
+                                            <small class="rk-hint">산 뒤 가장 높았던 값에서 이만큼 내려오면 팝니다 · 0 = 안 씀</small>
+                                        </div>
+                                        <div class="rk-range" id="rk-range" aria-hidden="true">
+                                            <div class="rk-track"><span class="rk-loss"></span><span class="rk-gain"></span><i class="rk-mid"></i></div>
+                                            <div class="rk-labels"><span class="rk-l" id="rk-range-loss">−5%</span><span class="rk-m">산 값</span><span class="rk-r" id="rk-range-gain">+10%</span></div>
+                                        </div>
+                                    </section>
+                                </div>
+                                            <section class="rk-group rp-limit" aria-labelledby="rp-limit-title">
+                                                <header class="rk-head"><span class="rk-icon"><i class="bi bi-calendar-x"></i></span>
+                                                    <div><h6 id="rp-limit-title">하루 · 전체 한도</h6><p>나쁜 날이 이어질 때 새로 사는 걸 멈춥니다</p></div></header>
+                                                <label class="mc-field rp-daily" title="그날 시작한 돈보다 이만큼 줄면 그날은 더 사지 않습니다. 팔기·손절은 계속합니다"><span>하루 손실 한도</span>
+                                            <div class="input-group input-group-sm"><input type="number" class="form-control" id="daily-loss-limit" value="10" min="0.1" step="0.1"><span class="input-group-text">%</span></div><small class="mc-help">넘게 잃으면 그날은 그만 삼</small></label>
+                                                <div class="rp-worst" id="risk-worst"></div>
+                                            </section>
+                                        </div>
+                                            <!-- 돈 관리: 위험 관리 카드 안 작은 묶음 (한 번에 얼마 · 몇 개까지 · 이럴 땐 사지 않기) — 추천 묶음을 고르면 같이 바뀜 -->
+                                            <section class="money-compact is-top is-in-risk" aria-labelledby="mc-title">
+                                                <header class="rk-head mc-rk-head"><span class="rk-icon"><i class="bi bi-wallet2"></i></span><div><h6 id="mc-title">돈 관리</h6><p>한 번에 얼마씩 · 몇 개까지</p></div></header>
+                                                <div class="mc-example" id="rk-example-basic"></div>
+                                                <div class="mc-row">
+                                                    <label class="mc-field" title="봇이 굴리는 돈(봇이 산 코인 + 쓸 수 있는 원화, 맡긴 코인 제외)의 몇 %씩 살지 — 원화가 줄어도 같은 크기로 삽니다"><span>1회 매수</span>
+                                                        <div class="input-group input-group-sm"><span class="input-group-text">굴리는 돈의</span><input type="number" class="form-control" id="position-size" value="10" step="0.1"><span class="input-group-text">%</span></div><small class="mc-help" id="position-size-help">봇이 산 코인 + 원화의 몇 %씩 살지</small></label>
+                                                    <label class="mc-field" title="정하면 켤 때 · 돈이 생겨 더 살 때 · 조건으로 살 때 모두 코인마다 이 금액씩 삽니다 (왼쪽 % 대신) · 0 = 왼쪽 % 대로"><span>코인당</span>
+                                                        <div class="input-group input-group-sm"><input type="text" inputmode="numeric" class="form-control money-input" id="order-krw" value="0" autocomplete="off"><span class="input-group-text">원</span></div><small class="mc-help" id="order-krw-help">0 = 왼쪽 % 대로 · 정하면 늘 이 금액씩</small></label>
+                                                    <label class="mc-field" title="한 번에 이 금액을 넘게 사지 않습니다 · 0 = 잔고의 30%까지"><span>1회 최대</span>
+                                                        <div class="input-group input-group-sm"><input type="text" inputmode="numeric" class="form-control money-input" id="max-order-krw" value="0" autocomplete="off"><span class="input-group-text">원</span></div><small class="mc-help">0 = 잔고의 30%까지</small></label>
+                                                    <label class="mc-field" title="이만큼 들고 있으면 더 사지 않습니다"><span>최대 보유</span>
+                                                        <div class="input-group input-group-sm"><input type="number" class="form-control" id="max-positions" value="3" min="1" step="1"><span class="input-group-text">개</span></div><small class="mc-help">이만큼 들고 있으면 더 안 삼</small></label>
+
+                                                </div>
+                                            </section>
+                                        <section class="rp-card" id="risk-dist"></section>
+                                        </div></div>
+                                        </section>
+                                        <div class="rk-foot"><span><i class="bi bi-info-circle"></i> 맡긴 코인은 맡긴 순간 가격부터 잽니다 · 같은 코인은 주문 후 60초 안에 다시 사고팔지 않습니다 (손절 · 익절은 예외)</span>
+                                            <span><i class="bi bi-cloud-check"></i> 바꾼 값은 아래에 뜨는 [적용하기]를 눌러야 봇에 반영됩니다 (곧바로 팔릴 코인이 있으면 먼저 보여 드립니다).</span></div>
+                                    </div></div>
+                                </div>
+                                <div class="builder-step d-none" data-step-pane="4">
+                                    <div class="card"><div class="card-body">
+                                        <div class="builder-done-head"><i class="bi bi-check-circle-fill"></i><div><b id="builder-done-name"></b><div class="text-muted small" id="builder-done-meta"></div></div></div>
+                                        <div class="rule-summary-card" id="builder-summary"></div>
+                                        <div class="builder-warn d-none" id="builder-warn"></div>
+                                        <div class="builder-done-actions">
+                                            <button type="button" class="btn btn-success" id="builder-start"><i class="bi bi-play-fill me-1"></i>이 봇 시작하기</button>
+                                            <button type="button" class="btn btn-outline-secondary" id="builder-to-list">나중에 시작 (봇 현황으로)</button>
+                                        </div>
+                                    </div></div>
+                                </div>
+                            </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="tab-pane fade" id="settings" role="tabpanel">
+                        <!-- 설정: 왼쪽 메뉴에서 고른 한 가지씩만 보여줌 (입력하면 자동 저장) -->
+                        <div class="settings-layout">
+                            <nav class="settings-nav nav flex-column" role="tablist" aria-label="설정 메뉴">
+                                <div class="sn-group">연결</div>
+                                <button class="nav-link active" id="set-exchange-tab" data-bs-toggle="pill" data-bs-target="#set-exchange" type="button" role="tab"><i class="bi bi-bank"></i><span class="sn-title">{{ ex_name if app_mode != 'sim' else '거래소' }} 연결</span><small class="sn-hint" id="sn-hint-exchange"></small><span class="sn-dot" id="sn-dot-exchange" aria-hidden="true"></span></button>
+                                <button class="nav-link" id="set-ai-tab" data-bs-toggle="pill" data-bs-target="#set-ai" type="button" role="tab"><i class="bi bi-stars"></i><span class="sn-title">AI 조건 도우미</span><small class="sn-hint" id="sn-hint-ai"></small><span class="sn-dot" id="sn-dot-ai" aria-hidden="true"></span></button>
+                                <div class="sn-group">시뮬레이션</div>
+                                <button class="nav-link" id="set-sim-tab" data-bs-toggle="pill" data-bs-target="#set-sim" type="button" role="tab"><i class="bi bi-controller"></i><span class="sn-title">시뮬레이션 계좌</span><small class="sn-hint" id="sn-hint-sim"></small></button>
+                                <div class="sn-group">계정 · 프로그램</div>
+                                <button class="nav-link" id="set-account-tab" data-bs-toggle="pill" data-bs-target="#set-account" type="button" role="tab"><i class="bi bi-person-badge"></i><span class="sn-title">계정</span><small class="sn-hint" id="sn-hint-account"></small><span class="sn-dot" id="sn-dot-account" aria-hidden="true"></span></button>
+                                <button class="nav-link" id="set-about-tab" data-bs-toggle="pill" data-bs-target="#set-about" type="button" role="tab"><i class="bi bi-info-circle"></i><span class="sn-title">프로그램 정보</span><small class="sn-hint">버전 {{ version }}</small></button>
+                                <div class="sn-saved"><i class="bi bi-cloud-check me-1"></i>모든 설정은 입력하면 자동 저장됩니다</div>
+                            </nav>
+                            <div class="tab-content settings-body">
+                            <div class="tab-pane fade show active" id="set-exchange" role="tabpanel">
+                            <div class="card" id="exchange-settings-card">
+                            <div class="card-header">
+                                <h5 class="mb-0 text-warning"><i class="bi bi-bank me-2"></i> <span id="exchange-title">{{ '빗썸' if app_mode == 'bithumb' else '업비트' }} 연결</span></h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <label class="form-label">거래소 선택</label>
+                                    <!-- 거래소마다 API 키가 따로 (업비트 모드 = 업비트 키, 빗썸 모드 = 빗썸 키) -->
+                                    <select class="form-select" id="exchange-select">
+                                        <option value="upbit" {{ 'selected' if app_mode != 'bithumb' }}>Upbit (업비트)</option>
+                                        <option value="bithumb" {{ 'selected' if app_mode == 'bithumb' }}>Bithumb (빗썸)</option>
+                                    </select>
+                                    <div class="form-text" id="exchange-help">고른 거래소의 키를 넣고 저장합니다. 업비트 · 빗썸 키는 따로 저장됩니다.</div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Access Key</label>
+                                    <div class="input-group">
+                                        <input type="password" class="form-control font-monospace" id="api-key" placeholder="Access Key를 입력하십시오" autocomplete="off" spellcheck="false">
+                                        <button class="btn btn-outline-secondary" type="button" title="키 보기/숨기기" onclick="toggleKeyVisibility('api-key', this)"><i class="bi bi-eye"></i></button>
+                                    </div>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">Secret Key</label>
+                                    <div class="input-group">
+                                        <input type="password" class="form-control font-monospace" id="api-secret" placeholder="Secret Key를 입력하십시오" autocomplete="off" spellcheck="false">
+                                        <button class="btn btn-outline-secondary" type="button" title="키 보기/숨기기" onclick="toggleKeyVisibility('api-secret', this)"><i class="bi bi-eye"></i></button>
+                                    </div>
+                                </div>
+                                <div class="mb-2 d-none" id="bithumb-fee-row">
+                                    <label class="form-label" for="bithumb-fee">내 빗썸 수수료 (%)</label>
+                                    <input type="number" class="form-control" id="bithumb-fee" min="0" max="1" step="0.01" placeholder="0.25">
+                                    <div class="form-text">빗썸은 수수료 쿠폰 등으로 사람마다 다릅니다. 봇이 사는 금액 · 손익 계산에 씁니다. [API 연결 테스트]를 누르면 계좌의 실제 수수료를 읽어 넣습니다.</div>
+                                </div>
+                                <div class="small text-muted mb-3" id="api-key-save-status">키를 입력하면 자동으로 저장됩니다</div>
+                                <!-- 키는 입력하면 자동 저장 (저장 버튼 없음). 연결 테스트 | 초기화를 한 줄에 반반 -->
+                                <div class="row g-2">
+                                    <div class="col-6">
+                                        <button class="btn btn-outline-primary w-100" id="btn-test-connection">
+                                            <i class="bi bi-link-45deg me-1"></i> API 연결 테스트
+                                        </button>
+                                    </div>
+                                    <div class="col-6">
+                                        <button class="btn btn-outline-secondary w-100" id="btn-reset-exchange">
+                                            <i class="bi bi-x-circle me-1"></i> API 키 초기화
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            </div>
+                            </div>
+                            <div class="tab-pane fade" id="set-sim" role="tabpanel">
+                            <div class="card">
+                            <div class="card-header">
+                                <h5 class="mb-0 text-success"><i class="bi bi-controller me-2"></i> 시뮬레이션 계좌</h5>
+                            </div>
+                            <div class="card-body">
+                                <p class="small text-muted mb-3">시뮬레이션 모드에서는 이 가상 계좌 하나로 사고팝니다. 업비트 계좌와 완전히 따로라, 여기서 산 코인은 업비트에 나타나지 않습니다.
+                                    봇의 '최대 투입 금액'은 이 계좌의 원화 안에서 봇마다 쓸 수 있는 한도입니다.</p>
+                                <div class="sim-acct-grid">
+                                    <div><small>초기자본</small><b id="sim-initial">-</b></div>
+                                    <div><small>남은 원화</small><b id="sim-krw">-</b></div>
+                                    <div><small>코인 평가금</small><b id="sim-coins">-</b></div>
+                                    <div><small>합계 (수익)</small><b id="sim-total">-</b><small id="sim-profit"></small></div>
+                                </div>
+                                <label class="form-label" for="sim-initial-input">초기자본으로 새로 시작</label>
+                                <div class="d-flex gap-2 flex-wrap align-items-center">
+                                    <div class="input-group input-group-sm" style="max-width: 240px;">
+                                        <input type="text" inputmode="numeric" class="form-control text-end money-input" id="sim-initial-input" value="10,000,000" autocomplete="off">
+                                        <span class="input-group-text">원</span>
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-danger" id="btn-sim-reset"><i class="bi bi-arrow-counterclockwise me-1"></i>시뮬레이션 전체 초기화</button>
+                                </div>
+                                <div class="small text-muted mt-2">실행 중인 시뮬레이션 봇을 멈추고 → 가진 코인을 모두 정리해 가상 원화를 위 금액으로 되돌리고 →
+                                    봇마다의 거래·수익 기록과 보유코인 수익률 기록을 처음으로 돌립니다. <b>봇과 설정·규칙은 그대로</b>이고, 지운 기록은 버리지 않고 보관합니다. 업비트 계좌는 건드리지 않습니다.</div>
+                            </div>
+                            </div>
+                            </div>
+                            <div class="tab-pane fade" id="set-ai" role="tabpanel">
+                            <div class="card">
+                            <div class="card-header">
+                                <h5 class="mb-0 text-primary"><i class="bi bi-stars me-2"></i> AI 조건 도우미</h5>
+                            </div>
+                            <div class="card-body">
+                                <p class="small text-muted mb-3">조건 검색의 <b>+ 내 조건</b>에서 문장으로 설명하면, 여기 넣은 AI가 조건으로 바꿔 줍니다.
+                                    AI에게는 <b>내가 쓴 조건 문장만</b> 보냅니다 (업비트 키·잔고·보유 코인은 보내지 않습니다). 요금은 내 AI 계정에 청구됩니다.</p>
+                                <div class="row g-2 mb-3">
+                                    <div class="col-5">
+                                        <label class="form-label" for="llm-provider">AI 제공사</label>
+                                        <select class="form-select" id="llm-provider">
+                                            <option value="claude">Claude (Anthropic)</option>
+                                            <option value="openai">OpenAI</option>
+                                            <option value="gemini">Google Gemini</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-7">
+                                        <label class="form-label" for="llm-model-pick">모델</label>
+                                        <select class="form-select" id="llm-model-pick"><option value="">자동 (추천)</option></select>
+                                        <input type="text" class="form-control mt-2 d-none" id="llm-model" autocomplete="off" spellcheck="false" placeholder="모델 이름을 직접 넣으십시오">
+                                        <div class="form-text" id="llm-model-note"></div>
+                                    </div>
+                                </div>
+                                <div class="mb-2">
+                                    <div class="d-flex justify-content-between align-items-baseline">
+                                        <label class="form-label" for="llm-api-key">API 키</label>
+                                        <!-- 고른 제공사의 키 발급 페이지 (새 창) -->
+                                        <a class="small fw-semibold" id="llm-key-link" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">
+                                            <i class="bi bi-key me-1"></i><span id="llm-key-link-text">Claude API 키 받기</span> <i class="bi bi-box-arrow-up-right"></i>
+                                        </a>
+                                    </div>
+                                    <div class="input-group">
+                                        <input type="password" class="form-control font-monospace" id="llm-api-key" placeholder="받은 API 키를 붙여 넣으십시오" autocomplete="off" spellcheck="false">
+                                        <button class="btn btn-outline-secondary" type="button" title="키 보기/숨기기" onclick="toggleKeyVisibility('llm-api-key', this)"><i class="bi bi-eye"></i></button>
+                                    </div>
+                                </div>
+                                <div class="form-text mb-1" id="llm-key-guide">위 링크에서 로그인 → <b>Create key</b>(새 키 만들기) → 만든 키를 복사해 여기에 붙여 넣으면 됩니다. 사용한 만큼 그 계정에 요금이 나옵니다.</div>
+                                    <div class="small text-muted mb-3" id="llm-save-status">입력하면 자동으로 저장됩니다 (암호화)</div>
+                                <button class="btn btn-outline-primary w-100" id="btn-test-llm" type="button"><i class="bi bi-link-45deg me-1"></i> AI 연결 테스트</button>
+                            </div>
+                            </div>
+                            </div>
+                            <!-- 계정: 실제 주문(업비트 모드)만 로그인 필요. 시뮬레이션·팔기는 계정 없이 (bot_core/license.py) -->
+                            <div class="tab-pane fade" id="set-account" role="tabpanel">
+                            <div class="card">
+                            <div class="card-header">
+                                <h5 class="mb-0 text-primary"><i class="bi bi-person-badge me-2"></i> StraBot 계정</h5>
+                            </div>
+                            <div class="card-body">
+                                <p class="small text-muted mb-3"><b>시뮬레이션 · 조건 검색 · 차트는 계정 없이 전부 쓸 수 있습니다.</b>
+                                    업비트 계좌로 실제 주문을 내는 <b>업비트 모드의 봇 시작과 사기</b>만 계정 로그인이 필요합니다.
+                                    가진 코인을 <b>파는 것은 로그인하지 않아도 언제든</b> 할 수 있습니다.</p>
+                                {% if not license_enforced %}
+                                <div class="alert alert-secondary py-2 small mb-3" id="acct-dev-note"><i class="bi bi-tools me-1"></i><b>개발 실행: 잠금이 꺼져 있습니다.</b>
+                                    소스로 실행 중이라 로그인하지 않아도 업비트 모드를 쓸 수 있습니다. 설치 파일로 실행하면 잠금이 켜집니다.</div>
+                                {% endif %}
+                                <div class="acct-status" id="acct-status">
+                                    <span class="acct-dot" id="acct-dot" aria-hidden="true"></span>
+                                    <div><b id="acct-status-text">확인 중…</b><small id="acct-status-sub"></small></div>
+                                </div>
+                                <div class="alert alert-info py-2 small mb-3 d-none" id="acct-notice"></div>
+                                <form id="acct-login-form" class="d-none" novalidate>
+                                    <div class="mb-2">
+                                        <label class="form-label" for="acct-email">이메일</label>
+                                        <input type="email" class="form-control" id="acct-email" autocomplete="username" spellcheck="false" placeholder="가입한 이메일">
+                                    </div>
+                                    <div class="mb-2">
+                                        <label class="form-label" for="acct-password">비밀번호</label>
+                                        <input type="password" class="form-control" id="acct-password" autocomplete="current-password" placeholder="비밀번호">
+                                    </div>
+                                    <div class="small text-danger fw-semibold mb-2" id="acct-login-error" role="alert"></div>
+                                    <div class="d-flex gap-2 flex-wrap">
+                                        <button type="submit" class="btn btn-primary" id="btn-acct-login"><i class="bi bi-box-arrow-in-right me-1"></i> 로그인</button>
+                                        <a class="btn btn-outline-primary" data-signup-link href="#" target="_blank" rel="noopener noreferrer"><i class="bi bi-person-plus me-1"></i> 무료 계정 만들기 <i class="bi bi-box-arrow-up-right"></i></a>
+                                    </div>
+                                    <div class="form-text">계정은 StraBot 사이트에서 만듭니다 (브라우저에서 열립니다). 만든 뒤 여기서 로그인하면 됩니다.</div>
+                                </form>
+                                <div id="acct-logged-in" class="d-none">
+                                    <div class="d-flex gap-2 flex-wrap">
+                                        <button type="button" class="btn btn-outline-primary" id="btn-acct-refresh"><i class="bi bi-arrow-repeat me-1"></i> 다시 확인</button>
+                                        <button type="button" class="btn btn-outline-secondary" id="btn-acct-logout"><i class="bi bi-box-arrow-right me-1"></i> 로그아웃</button>
+                                    </div>
+                                    <div class="form-text">하루에 한 번 자동으로 다시 확인합니다. 서버에 닿지 않아도 확인된 날짜까지는 그대로 쓸 수 있습니다.
+                                        로그아웃해도 실행 중인 봇의 팔기·손절은 계속되고, 새로 사기만 멈춥니다.</div>
+                                </div>
+                                <div class="form-text mt-3">비밀번호 변경 · 계정 삭제는 <a data-account-link href="#" target="_blank" rel="noopener noreferrer">StraBot 사이트의 내 계정 <i class="bi bi-box-arrow-up-right"></i></a>에서 합니다.</div>
+                                <div class="acct-privacy"><i class="bi bi-shield-lock me-1"></i><b>서버로 보내는 것은 이메일 · 설치 ID · 프로그램 버전뿐입니다</b>
+                                    (비밀번호는 로그인할 때 한 번 보내고 이 PC에 저장하지 않습니다). <b>업비트 키 · 잔고 · 매매 기록은 보내지 않습니다.</b></div>
+                            </div>
+                            </div>
+                            </div>
+                            <div class="tab-pane fade" id="set-about" role="tabpanel">
+                            <div class="card">
+                            <div class="card-header">
+                                <h5 class="mb-0 text-primary"><i class="bi bi-info-circle me-2"></i> 프로그램 정보</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="d-flex align-items-center justify-content-between gap-3 flex-wrap mb-2">
+                                    <div>지금 버전 <b>StraBot {{ version }}</b></div>
+                                    <button type="button" class="btn btn-outline-primary" id="btn-check-update"><i class="bi bi-arrow-repeat me-1"></i> 업데이트 확인</button>
+                                </div>
+                                <div class="form-text">새 버전이 있으면 설치 파일을 받아, 서버가 알려 준 확인값과 같은지 확인한 뒤에만 실행합니다.</div>
+                                <hr>
+                                <div class="hub-links">
+                                    <div class="fw-semibold mb-1"><i class="bi bi-compass me-1"></i> 규칙을 정할 때 함께 보면 좋은 곳</div>
+                                    <div class="small text-muted mb-2">StraHub는 MAYAi 그룹이 만든 무료 정보 사이트입니다. 무엇을 사고팔지는 권하지 않고, 지표 값과 검증 기록만 공개합니다.</div>
+                                    <div class="d-flex flex-wrap gap-2">
+                                        <a class="btn btn-sm btn-outline-secondary" href="https://app.strahub.com/?ref=strabot-app" target="_blank" rel="noopener"><i class="bi bi-graph-up me-1"></i> StraHub 실시간 차트</a>
+                                        <a class="btn btn-sm btn-outline-secondary" href="https://app.strahub.com/coins?ref=strabot-app" target="_blank" rel="noopener"><i class="bi bi-list-ul me-1"></i> 코인별 지표 현황</a>
+                                        <a class="btn btn-sm btn-outline-secondary" href="https://app.strahub.com/blog?ref=strabot-app" target="_blank" rel="noopener"><i class="bi bi-journal-text me-1"></i> 검증 기록 (블로그)</a>
+                                    </div>
+                                </div>
+                                <hr>
+                                <div class="small text-muted">StraBot은 내가 정한 규칙을 그대로 실행하는 도구입니다. 수익을 보장하지 않고 손실이 날 수 있습니다.
+                                    처음에는 시뮬레이션 모드(가상 계좌)로 충분히 시험해 보십시오.</div>
+                            </div>
+                            </div>
+                            </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 거래 내역 탭: 업비트 거래내역 (매수·매도 체결 + 입금·출금) -->
+                    <!-- 백테스트: 규칙(대상 코인 · 매수 · 매도 · 위험 관리)을 저장하지 않고 여러 코인으로 과거에 돌려 봄 (static/js/backtest_lab.js) -->
+                    <div class="tab-pane fade" id="bt-lab" role="tabpanel">
+                        <div class="btl-hero">
+                            <div class="btl-hero-text">
+                                <h4><i class="bi bi-rewind-circle"></i> 백테스트</h4>
+                                <p>규칙을 저장하지 않고 과거 캔들로 돌려 봅니다 · 봇 백테스트와 같은 계산 · 수수료 · 미끄럼은 실행 칸에서 정합니다</p>
+                            </div>
+                            <div class="btl-hero-side">
+                                <button type="button" class="btn btn-sm btl-reset-btn" id="btl-reset" title="대상 코인 · 매수 · 매도 · 위험 관리 · 기간 · 결과를 처음 상태로"><i class="bi bi-arrow-counterclockwise"></i> 초기화</button>
+                                <div class="btl-make-wrap">
+                                    <button type="button" class="btn btn-sm btn-outline-primary btl-make-btn" id="btl-make-open" aria-haspopup="dialog" aria-expanded="false"><i class="bi bi-robot"></i> 이 규칙으로 봇 만들기</button>
+                                    <div class="btl-make-pop" id="btl-make-pop" role="dialog" aria-label="이 규칙으로 봇 만들기" hidden>
+                                        <b>이 규칙으로 봇 만들기</b>
+                                        <p>대상 코인 · 매수 · 매도 · 위험 관리를 그대로 담은 봇을 만듭니다. 켜지는 않습니다.</p>
+                                        <div class="btl-make-row"><input type="text" class="form-control form-control-sm" id="btl-bot-name" placeholder="봇 이름 (예: 볼린저 아래에서 사기)" maxlength="30" aria-label="봇 이름">
+                                            <button type="button" class="btn btn-sm btn-primary" id="btl-make-bot">만들기</button></div>
+                                        <small id="btl-made"></small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="btl-wrap">
+                            <aside class="btl-palette" aria-label="규칙 · 패턴 목록">
+                                <div class="btl-pal-top">
+                                    <div class="btl-pal-title">규칙 · 패턴 <small>[매수] · [매도] · [대상]으로 넣기</small></div>
+                                    <div class="rp-search"><i class="bi bi-search" aria-hidden="true"></i><input type="search" class="form-control form-control-sm" id="btl-search" placeholder="검색 (영어도: MA · BB · RSI …)" aria-label="규칙 검색" autocomplete="off"></div>
+                                    <div class="tf-seg btl-tabs" role="tablist">
+                                        <button type="button" data-btl-tab="basic" role="tab">기본 조건</button>
+                                        <button type="button" data-btl-tab="pattern" role="tab">패턴</button>
+                                        <button type="button" data-btl-tab="mine" role="tab">나의 조건</button>
+                                        <button type="button" data-btl-tab="bots" role="tab">나의 봇</button>
+                                    </div>
+                                </div>
+                                <div class="btl-pal-list" id="btl-pal-list"></div>
+                            </aside>
+                            <div class="btl-right">
+                            <div class="btl-main">
+                            <div class="btl-setup">
+                                <section class="btl-step is-target"><header><span class="btl-no"><i class="bi bi-bullseye"></i></span><div><h6>대상 코인</h6><small>어떤 코인으로 돌려 볼까 · 코인마다 따로 계산</small></div></header><div class="btl-step-body" id="btl-target"></div></section>
+                                <section class="btl-step is-buy"><header><span class="btl-no"><i class="bi bi-cart3"></i></span><div><h6>매수 조건</h6><small>언제 살까</small></div><span class="btl-step-tool" id="btl-buy-tool"></span></header><div class="btl-step-body" id="btl-buy"></div></section>
+                                <section class="btl-step is-sell"><header><span class="btl-no"><i class="bi bi-cash-coin"></i></span><div><h6>매도 조건</h6><small>언제 팔까 · 비워 두면 손절 · 익절 · 트레일링으로만</small></div><span class="btl-step-tool" id="btl-sell-tool"></span></header><div class="btl-step-body" id="btl-sell"></div></section>
+                                <section class="btl-step is-risk"><header><span class="btl-no"><i class="bi bi-shield-check"></i></span><div><h6>위험 관리 및 설정</h6><small>얼마씩 사고 언제 끊을까 · 거래 비용 · 0 = 쓰지 않음</small></div></header><div class="btl-step-body btl-risk" id="btl-risk"></div></section>
+                            </div>
+                            <div class="btl-side">
+                                <section class="btl-run">
+                                    <header><h6><i class="bi bi-play-circle"></i> 실행</h6></header>
+                                    <div class="btl-run-body">
+                                        <div class="btl-field"><label title="이 봉이 하나 끝날 때마다 한 번 조건 · 손절 · 익절을 확인합니다. 결과 차트의 캔들도 이 봉입니다.">확인 간격 <span>봇이 얼마나 자주 볼지 · 결과 차트 캔들</span></label><div class="tf-seg btl-seg-wrap" id="btl-units" role="group" aria-label="확인 간격"></div><div class="btl-tfwarn" id="btl-tfwarn"></div></div>
+                                        <div class="btl-field"><label>기간 <span id="btl-limit"></span></label>
+                                            <div class="tf-seg btl-seg-wrap" id="btl-presets" role="group" aria-label="기간 빨리 고르기"></div>
+                                            <div class="btl-dates"><input type="date" class="form-control form-control-sm" id="btl-start" aria-label="시작 날짜"><span>~</span><input type="date" class="form-control form-control-sm" id="btl-end" aria-label="끝 날짜"></div></div>
+                                        <div class="btl-field"><label for="btl-krw">시작 금액 <span>코인마다</span></label>
+                                            <div class="btl-num"><input type="number" class="form-control form-control-sm" id="btl-krw" min="10000" step="10000"><span>원</span></div></div>
+                                        <button type="button" class="btn btn-primary btl-go" id="btl-run"><i class="bi bi-play-fill"></i> 백테스트 시작</button>
+                                        <div class="bt-progress d-none" id="btl-progress">
+                                            <div class="progress" role="progressbar" aria-label="백테스트 진행"><div class="progress-bar progress-bar-striped progress-bar-animated" id="btl-progress-bar" style="width:0%"></div></div>
+                                            <small id="btl-progress-text"></small>
+                                        </div>
+                                        <div class="btl-check" id="btl-skip"></div>
+                                    </div>
+                                </section>
+                            </div>
+                            </div>
+                            <section class="btl-summary d-none" id="btl-summary"></section>
+                            <div id="btl-result-slot" class="btl-result-slot"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="tab-pane fade" id="trades" role="tabpanel">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0 text-primary"><i class="bi bi-clock-history me-2"></i> {{ '가상 계좌 거래내역' if app_mode == 'sim' else ex_name ~ ' 거래내역' }}</h5>
+                                <div class="d-flex gap-2">
+                                    {% if app_mode == 'sim' %}<button class="btn btn-sm btn-outline-danger" id="btn-trades-clear" type="button" title="시뮬레이션 거래 내역을 지우고 지금부터 새로 보기"><i class="bi bi-eraser me-1"></i> 기록 지우기</button>{% endif %}
+                                    <button class="btn btn-sm btn-outline-secondary" id="btn-trades-csv" type="button"><i class="bi bi-download me-1"></i> CSV 다운로드</button>
+                                    <button class="btn btn-sm btn-outline-primary" id="btn-refresh-trades" type="button"><i class="bi bi-arrow-clockwise me-1"></i> 새로고침</button>
+                                </div>
+                            </div>
+                            <div class="card-body border-bottom py-3 d-flex flex-wrap gap-4 align-items-end">
+                                <div>
+                                    <div class="summary-label mb-1">기간 <span class="text-muted fw-normal ms-1" id="trades-range"></span></div>
+                                    <div class="btn-group btn-group-sm" role="group" id="trades-period" aria-label="기간">
+                                    <button type="button" class="btn btn-outline-secondary active" data-days="7">1주일</button>
+                                    <button type="button" class="btn btn-outline-secondary" data-days="30">1개월</button>
+                                    <button type="button" class="btn btn-outline-secondary" data-days="90">3개월</button>
+                                    <button type="button" class="btn btn-outline-secondary" data-days="180">6개월</button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="summary-label mb-1">종류</div>
+                                    <div class="btn-group btn-group-sm" role="group" id="trades-kind" aria-label="종류">
+                                    <button type="button" class="btn btn-outline-secondary active" data-kind="ALL">전체</button>
+                                    <button type="button" class="btn btn-outline-secondary" data-kind="매수">매수</button>
+                                    <button type="button" class="btn btn-outline-secondary" data-kind="매도">매도</button>
+                                    <button type="button" class="btn btn-outline-secondary" data-kind="입금">입금</button>
+                                    <button type="button" class="btn btn-outline-secondary" data-kind="출금">출금</button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="summary-label mb-1">봇</div>
+                                    <div class="trades-bot-tags" id="trades-bot" role="group" aria-label="봇 고르기"></div>
+                                </div>
+                                <!-- 오른쪽 끝 한 묶음: 건수 · 업데이트 | 코인 검색 (좁아지면 묶음째 다음 줄 오른쪽으로) -->
+                                <div class="trades-right">
+                                <div class="trades-summary" id="trades-summary"></div>
+                                <div class="trades-coin">
+                                    <div class="summary-label mb-1">코인선택</div>
+                                    <input type="search" class="form-control form-control-sm" id="trades-search" placeholder="전체 (코인명·심볼·초성)" autocomplete="off">
+                                </div>
+                                </div>
+                            </div>
+                            <div class="card-body border-bottom py-2 small text-muted" id="trades-note"></div>
+                            <!-- 거래 차트 창: 표의 줄을 누르면 뜸 — 고른 코인의 캔들 위에 매수 ▲ · 매도 ▼ + 그 코인 거래 목록 (화살표 ↔ 목록 줄이 서로 찾아 줌) -->
+                            <div class="modal fade" id="tx-modal" tabindex="-1" aria-labelledby="tx-name">
+                                <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+                                    <div class="modal-content">
+                                        <div class="modal-header tx-bar">
+                                            <div class="tx-coin"><span id="tx-logo"></span><b id="tx-name">-</b><small id="tx-sym"></small></div>
+                                            <div class="hc-units" id="tx-units" role="group" aria-label="캔들 단위"></div>
+                                            <button type="button" class="btn-close ms-2" data-bs-dismiss="modal" aria-label="닫기"></button>
+                                        </div>
+                                        <div class="modal-body">
+                                            <div class="tx-chart" id="tx-chart"></div>
+                                            <div class="tx-foot">
+                                                <span class="lg-buy">▲ 매수</span><span class="lg-sell">▼ 매도</span>
+                                                <span class="tx-hint" id="tx-hint"></span>
+                                            </div>
+                                            <div class="tx-split" id="tx-split" role="separator" aria-orientation="horizontal" title="위아래로 끌어 차트와 목록 높이를 바꿀 수 있으며, 두 번 누르면 원래대로 돌아갑니다."><span></span></div>
+                                            <div class="tx-mini" id="tx-mini"></div>
+                                        </div>
+                                        <div class="tx-resize" id="tx-resize" title="끌어서 창 크기 바꾸기" aria-hidden="true"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-body p-0">
+                                <div class="table-responsive table-scroll">
+                                    <table class="table table-hover mb-0 data-table" id="trades-table">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>체결시간</th>
+                                                <th>코인</th>
+                                                <th>마켓</th>
+                                                <th>종류</th>
+                                                <th class="txrs-head"><span class="txrs-grid"><span class="txrs-c txrs-from">평균 매수단가</span><span class="txrs-c txrs-to">거래단가</span><span class="txrs-c txrs-pnl">손익</span><span class="txrs-c txrs-pct">수익률</span></span></th>
+                                                <th class="text-end">거래금액</th>
+                                                <th class="text-end">수수료</th>
+                                                <th class="text-end">정산금액</th>
+                                                <th>봇 · 이유</th>
+                                                <th class="text-end">거래수량</th>
+                                                <th class="text-end" title="손익을 셀 때 기준이 되는 값 · 지금까지 산 값의 평균 (업비트 매수평균가와 같은 방식)">매수평균가</th>
+                                                <th class="text-end">주문시간</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="trades-tbody">
+                                            <tr><td colspan="12" class="text-center py-4 text-muted">거래내역 탭을 열면 업비트에서 불러옵니다</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 전체코인 분석 탭: 업비트 원화 마켓 전체 -->
+                    <!-- 차트 분석: 코인 하나를 크게 · 같은 코인 여러 봉 · 여러 코인 (static/js/chart_lab.js) -->
+                    <div class="tab-pane fade" id="chart-lab" role="tabpanel">
+                        <div class="cl-wrap">
+                            <div class="cl-main">
+                                <div class="cl-bar" id="cl-bar"></div>
+                                <div class="cl-grid" id="cl-grid"></div>
+                            </div>
+                            <!-- 코인 목록 접기 · 펼치기: 접으면 차트가 그만큼 넓어짐 (목록이 차트 위를 덮지 않음, 이 PC에 기억) -->
+                            <button type="button" class="cl-side-rail" id="cl-side-open" title="코인 목록 펼치기" aria-label="코인 목록 펼치기"><i class="bi bi-chevron-double-left"></i><span>코인 목록</span></button>
+                            <!-- 목록과 차트 사이 손잡이: 누르면 접기 ↔ 펼치기 -->
+                            <button type="button" class="cl-side-handle" id="cl-side-handle" title="코인 목록 접기 (차트를 넓게)" aria-label="코인 목록 접기 · 펼치기"><i class="bi bi-chevron-right"></i></button>
+                            <aside class="cl-side" aria-label="코인 목록">
+                                <!-- 거래소 시세판처럼: 찾기 · 원화/보유/관심 · 머리줄을 눌러 정렬 -->
+                                <div class="cl-search"><i class="bi bi-search"></i><input type="search" id="cl-search" class="form-control" placeholder="코인명/심볼 검색" autocomplete="off"></div>
+                                <div class="cl-side-tabs" role="tablist">
+                                    <button type="button" data-cl-list="krw" role="tab">원화</button>
+                                    <button type="button" data-cl-list="held" role="tab">보유</button>
+                                    <button type="button" data-cl-list="fav" role="tab">관심</button>
+                                </div>
+                                <div class="cl-thead" role="row">
+                                    <button type="button" class="cl-th is-name" data-cl-sort="name">한글명 <i></i></button>
+                                    <button type="button" class="cl-th" data-cl-sort="price">현재가 <i></i></button>
+                                    <button type="button" class="cl-th" data-cl-sort="chg">전일대비 <i></i></button>
+                                    <button type="button" class="cl-th" data-cl-sort="value">거래대금 <i></i></button>
+                                </div>
+                                <div class="cl-list-hint" id="cl-list-hint"></div>
+                                <div class="cl-list" id="cl-list"></div>
+                            </aside>
+                        </div>
+                    </div>
+                    <div class="tab-pane fade" id="markets" role="tabpanel">
+                        <div class="card mb-4">
+                            <!-- 요약 한 줄: 상승·보합·하락 + 비율 막대 | 전체 · 내 보유 | 새로고침 (값은 JS가 채움) -->
+                            <div class="mk-strip border-bottom">
+                                <div class="mk-strip-body" id="markets-summary"><span class="text-muted small">불러오는 중...</span></div>
+                                <!-- 실시간 체결(1분 매수) 상태 + 급증 알림 켜기/끄기 -->
+                                <span class="flow-status small" id="flow-status" title="업비트 실시간 체결로 코인별 1분 매수 금액을 모읍니다">실시간 체결 연결 중…</span>
+                                <button class="btn btn-sm mk-refresh" id="btn-refresh-markets" type="button" title="새로고침" aria-label="새로고침">
+                                    <i class="bi bi-arrow-clockwise"></i>
+                                </button>
+                            </div>
+                            <!-- 시장 현황 (보유코인 분석의 포트폴리오 현황과 같은 모양): 시장 분위기 추이 · 등락률 분포 · 상승 · 하락 상위 · 거래대금 비중 -->
+                            <div class="card-body ip-now border-bottom" id="mk-overview">
+                                <div class="ip-sec-head" id="mk-overview-head" role="button" tabindex="0" aria-expanded="true" aria-controls="mk-overview-body" title="눌러서 접거나 펼치실 수 있습니다."><b>시장 현황</b><small>원화 마켓 전체 · 오늘 9시(전일 종가) 대비</small><span class="ip-fold" id="mk-overview-fold"><span>접기</span><i class="bi bi-chevron-up"></i></span></div>
+                                <div class="mk-ov-row" id="mk-overview-body">
+                                    <div class="ip-card ip-line-card">
+                                        <div class="ip-card-head ip-card-tools">
+                                            <b>시장 분위기 추이</b>
+                                            <div class="btn-group btn-group-sm" role="group" id="mk-breadth-units" aria-label="점 간격"><button type="button" class="btn btn-outline-secondary" data-mk-interval="1m">1분</button><button type="button" class="btn btn-outline-secondary" data-mk-interval="10m">10분</button><button type="button" class="btn btn-outline-secondary active" data-mk-interval="15m">15분</button><button type="button" class="btn btn-outline-secondary" data-mk-interval="30m">30분</button><button type="button" class="btn btn-outline-secondary" data-mk-interval="1h">1시간</button><button type="button" class="btn btn-outline-secondary" data-mk-interval="4h">4시간</button><button type="button" class="btn btn-outline-secondary" data-mk-interval="1d">일</button><button type="button" class="btn btn-outline-secondary" data-mk-interval="1w">주</button><button type="button" class="btn btn-outline-secondary" data-mk-interval="1M">월</button></div>
+                                            <span class="small text-muted" id="mk-breadth-info"></span>
+                                        </div>
+                                        <div class="pnl-line mk-ov-body">
+                                            <canvas id="mk-breadth-chart" aria-label="상승 코인 비율 · 평균 등락률 추이" role="img"></canvas>
+                                            <div id="mk-breadth-empty" class="position-absolute top-50 start-50 translate-middle text-center text-muted small d-none">기록을 모으는 중입니다</div>
+                                        </div>
+                                    </div>
+                                    <div class="ip-card">
+                                        <div class="ip-card-head ip-card-tools"><b>분포</b>
+                                            <select class="form-select form-select-sm w-auto mk-movers-metric" id="mk-dist-metric" aria-label="분포 기준" title="오늘 등락률 또는 표의 저점 칸(저점 대비 %) 기준">
+                                                <option value="change_rate">오늘 등락률</option><option value="low_d1_rate">전일저점</option><option value="low_w1_rate">주간저점</option>
+                                                <option value="low_m1_rate">월간저점</option><option value="low_h6_rate">6개월저점</option><option value="low_y1_rate">연간저점</option>
+                                            </select>
+                                            <small class="mk-movers-sub" id="mk-dist-sub"></small></div>
+                                        <div class="hd-ins-body mk-ov-body"><canvas id="mk-dist-chart" aria-label="오늘 등락률 구간별 코인 수" role="img"></canvas></div>
+                                    </div>
+                                    <div class="ip-card">
+                                        <div class="ip-card-head ip-card-tools"><b>상위 · 하위</b>
+                                            <select class="form-select form-select-sm w-auto mk-movers-metric" id="mk-movers-metric" aria-label="기준" title="오늘 등락률 또는 표의 저점 칸(저점 대비 %) 기준">
+                                                <option value="change_rate">오늘 등락률</option><option value="low_d1_rate">전일저점</option><option value="low_w1_rate">주간저점</option>
+                                                <option value="low_m1_rate">월간저점</option><option value="low_h6_rate">6개월저점</option><option value="low_y1_rate">연간저점</option>
+                                            </select>
+                                            <small class="mk-movers-sub" id="mk-movers-sub"></small></div>
+                                        <div class="hd-ins-body mk-ov-body"><canvas id="mk-movers-chart" aria-label="기준별 상위 · 하위 코인 (누르면 아래 표에서 그 코인만)" role="img"></canvas>
+                                            <div id="mk-movers-empty" class="position-absolute top-50 start-50 translate-middle text-center text-muted small d-none"></div></div>
+                                    </div>
+                                    <div class="ip-card">
+                                        <div class="ip-card-head"><b>거래대금 비중</b><small id="mk-share-sub"></small></div>
+                                        <div class="hd-share d-none" id="mk-share">
+                                            <div class="hd-share-legend" id="mk-share-legend"></div>
+                                            <div class="hd-share-donut">
+                                                <canvas id="mk-share-chart" aria-label="거래대금 비중 도넛 그래프" role="img"></canvas>
+                                                <div class="hd-share-center">거래대금<br>비중 (%)</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- 기간 시세를 불러오는 동안만 보이는 상태 줄 (비어 있으면 숨김) -->
+                            <div class="card-body border-bottom py-2 small text-muted" id="markets-lows-status" role="status"></div>
+                            <!-- 조건 검색을 켜면: 왼쪽 = 조건 목록, 오른쪽 = 검색 조건 + 코인 목록 (조건에 맞는 코인만, 매매 권유 아님) -->
+                            <div class="mk-layout">
+                                <div class="screen-aside-slot" id="markets-aside-slot">
+                                <aside class="screen-aside" id="screen-aside" aria-label="조건 검색">
+                                    <!-- 조건 목록 접기 · 펼치기 (전체코인 분석 · 보유코인 분석 같이, 이 PC에 기억) -->
+                                    <button type="button" class="aside-fold" id="aside-fold" title="조건 목록 접기" aria-label="조건 목록 접기" aria-expanded="true"><i class="bi bi-chevron-left"></i></button>
+                                    <button type="button" class="aside-folded-bar" id="aside-folded-bar" title="조건 목록 펼치기" aria-label="조건 목록 펼치기"><i class="bi bi-layout-sidebar"></i><span>조건 목록</span></button>
+                                    <div class="aside-splitter" id="aside-splitter" role="separator" aria-orientation="vertical" aria-label="조건 목록 폭 조절"
+                                         tabindex="0" title="끌어서 폭 조절 · 두 번 클릭하면 원래대로"></div>
+                                    <div class="card border screen-list-card">
+                                        <div class="card-header">
+                                            <!-- 기본 조건 / 패턴 / 나의 조건 탭 -->
+                                            <div class="cond-tabs mb-2" role="tablist" aria-label="조건 종류" id="cond-tabs">
+                                                <button type="button" class="cond-tab" data-cond-tab="basic" role="tab">기본 조건 <span class="cond-tab-count" id="cond-tab-count-basic"></span></button>
+                                                <button type="button" class="cond-tab" data-cond-tab="pattern" role="tab">패턴 <span class="cond-tab-count" id="cond-tab-count-pattern"></span></button>
+                                                <button type="button" class="cond-tab" data-cond-tab="mine" role="tab">나의 조건 <span class="cond-tab-count" id="cond-tab-count-mine"></span></button>
+                                            </div>
+                                            <!-- 봉 단위 일괄: 캔들 조건을 한꺼번에 같은 봉으로 (분석 화면 전용, 조건마다 설정은 그대로 둠) -->
+                                            <div class="screen-tf-all" id="screen-tf-all"></div>
+                                        </div>
+                                        <div class="list-group list-group-flush screen-list" id="screen-list"></div>
+                                        <div class="card-body small border-top">
+                                            <div class="form-check mb-1">
+                                                <input class="form-check-input" type="checkbox" id="screen-include-stable">
+                                                <label class="form-check-label" for="screen-include-stable">스테이블코인 포함 <span class="text-muted">(테더·USDC 등)</span></label>
+                                            </div>
+                                            <div class="text-muted" id="screen-updated">불러오는 중…</div>
+                                        </div>
+                                    </div>
+                                </aside>
+                                </div>
+                                <div class="mk-main">
+                                    <div class="screen-panel-slot" id="markets-panel-slot">
+                                    <!-- 고른 조건과 숫자: 목록 위 얇은 막대 (조건을 골랐을 때만 보임) -->
+                                    <section class="screen-bar" id="screen-panel" aria-label="검색 조건">
+                                        <div class="sb-line">
+                                            <h6 class="sb-title" id="screen-title"><i class="bi bi-funnel me-2"></i> 조건 검색</h6>
+                                            <p class="sb-desc" id="screen-desc"></p>
+                                            <span class="sb-count" id="screen-hit-count"></span>
+                                        </div>
+                                        <div class="sb-line sb-controls">
+                                            <div class="cond-grid" id="screen-params"></div>
+                                            <button type="button" class="btn btn-sm cond-reset" id="screen-reset"><i class="bi bi-arrow-counterclockwise me-1"></i>기본값으로</button>
+                                            <span class="sb-note" title="조건에 맞는 코인을 보여줄 뿐이며 매매를 권하는 것이 아닙니다. 사고팔지는 직접 판단해 주십시오."><i class="bi bi-info-circle me-1"></i>매매 권유 아님</span>
+                                        </div>
+                                        <div class="sb-status small text-muted" id="screen-status" role="status"></div>
+                                    </section>
+                                    </div>
+                                    <ul class="nav nav-tabs sub-tabs" role="tablist">
+                                        <li class="nav-item" role="presentation">
+                                            <button class="nav-link active" id="markets-lows-tab" data-bs-toggle="tab" data-bs-target="#markets-lows-pane" type="button" role="tab">코인 목록 · 저점수익률</button>
+                                        </li>
+                                        <li class="nav-item" role="presentation">
+                                            <button class="nav-link" id="markets-signals-tab" data-bs-toggle="tab" data-bs-target="#markets-signals-pane" type="button" role="tab"><i class="bi bi-tags me-1"></i>신호 모아보기</button>
+                                        </li>
+                                        <li class="nav-item" role="presentation">
+                                            <button class="nav-link" id="markets-rel-tab" data-bs-toggle="tab" data-bs-target="#markets-rel-pane" type="button" role="tab"><i class="bi bi-clipboard-check me-1"></i>신호별 신뢰도</button>
+                                        </li>
+                                        <li class="nav-item ms-auto pb-1 d-flex align-items-center gap-2">
+                                            <input type="search" class="form-control form-control-sm" id="markets-search" placeholder="코인명·심볼 검색 (초성 가능)" aria-label="코인 검색" autocomplete="off">
+                                            <!-- 조건 끄기 = 모든 코인 보기 (코인 목록 바로 위, 검색란 오른쪽) -->
+                                            <button type="button" class="screen-all-btn" id="btn-screen-all" data-screen-all title="고른 조건을 끄고 모든 코인 보기"><i class="bi bi-grid-3x3-gap"></i><span>모든 코인 보기</span></button>
+                                        </li>
+                                    </ul>
+                                    <div class="tab-content">
+                                    <div class="tab-pane fade" id="markets-rel-pane" role="tabpanel"><div class="rel-board" id="rel-board"></div></div>
+                                    <div class="tab-pane fade" id="markets-signals-pane" role="tabpanel"><div class="sig-board" data-sig-scope="markets"></div></div>
+<div class="tab-pane fade show active" id="markets-lows-pane" role="tabpanel">
+                                    <!-- 선택한 코인 일괄 주문 (고른 코인이 있을 때만 보임) -->
+                                    <div class="card-body border-bottom py-2 selbar d-none" id="markets-selbar">
+                                        <span class="fw-semibold me-3"><i class="bi bi-check2-square me-1"></i><span id="markets-sel-count">0</span>개 선택됨</span>
+                                        <button type="button" class="btn btn-sm btn-danger me-1" data-batch="markets" data-side="buy"><i class="bi bi-cart-plus me-1"></i>선택 매수</button>
+                                        <button type="button" class="btn btn-sm btn-primary me-1" data-batch="markets" data-side="sell"><i class="bi bi-cash-coin me-1"></i>선택 매도</button>
+                                        <button type="button" class="btn btn-sm btn-light border" data-batch-clear="markets">선택 해제</button>
+                                    </div>
+                                    <div class="card-body p-0">
+                                        <div class="table-responsive table-scroll">
+                                            <table class="table table-hover mb-0 data-table" id="markets-table">
+                                                <thead class="table-light">
+                                                    <tr>
+                                                        <th class="sel-cell"><input type="checkbox" class="form-check-input" id="markets-sel-all" aria-label="보이는 코인 전체 선택"></th>
+                                                        <th data-sort="alert_level" title="상폐 · 유의 · 입출금 중단 · 주의 · 공지 표시이며, 누르면 위험한 순으로 정렬됩니다.">알림</th>
+                                                        <th data-sort="korean_name">코인</th>
+                                                        <th id="markets-spark-header" title="정렬 중인 기간의 종가 추이 (조건 검색을 켜면 그 조건 그래프)">추이 (30일)</th>
+                                                        <!-- 조건 검색을 켜면 여기에 조건별 칸(급등일·RSI 등)이 들어옴 -->
+                                                        <th class="text-end" data-sort="current_price">현재가</th>
+                                                        <th class="text-end" data-sort="change_rate" title="업비트 기준 전일 종가(오전 9시) 대비 등락률">전일대비</th>
+                                                        <th class="text-end grp" data-sort="low_d1_rate" title="최근 24시간 최저가보다 현재가가 몇 % 높은지">전일저점</th>
+                                                        <th class="text-end" data-sort="low_w1_rate" title="최근 7일 최저가 대비">주간저점</th>
+                                                        <th class="text-end" data-sort="low_m1_rate" title="최근 30일 최저가 대비">월간저점</th>
+                                                        <th class="text-end" data-sort="low_h6_rate" title="최근 6개월(26주) 최저가 대비">6개월저점</th>
+                                                        <th class="text-end" data-sort="low_y1_rate" title="최근 1년(52주) 최저가 대비. 0%에 가까우면 1년 바닥 근처">연간저점</th>
+                                                        <th class="text-end grp" data-sort="trade_value_24h" title="최근 24시간 동안 업비트에서 거래된 금액 (백만 원)">거래대금</th>
+                                                        <th class="text-end" data-sort="flow_buy" title="방금 끝난 1분 동안 매수로 체결된 금액 · 아래 줄: 평소(직전 30분 평균) 대비 배수와 매수 비중">1분 매수</th>
+                                                        <th class="text-center" data-sort="held" title="내가 가진 코인 (보유코인 분석 기준)">보유</th>
+                                                        <th class="text-end">주문</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="markets-tbody">
+                                                    <tr><td colspan="14" class="text-center py-4 text-muted">불러오는 중...</td></tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                    </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="tab-pane fade" id="positions" role="tabpanel">
+                        <!-- 업비트 실제 보유 코인 -->
+                        <div class="card mb-4" id="holdings-assets-page">
+                            <!-- 요약 한 줄: 보유 코인 수 | 총 매수 | 총 평가 | 평가손익 | 평가수익률(크게) | 보유 원화 | 새로고침 (값은 JS가 id로 채움) -->
+                            <div class="mk-strip border-bottom" id="holdings-summary">
+                                <div class="mk-strip-body">
+                                    <div class="mk-stat hd-count-stat"><span class="mk-label">보유 코인</span><b id="holdings-count">-</b><small class="hd-count-sub" id="holdings-count-sub"></small></div>
+                                    <div class="mk-stat"><span class="mk-label">총 매수</span><b id="holdings-buy">-</b></div>
+                                    <div class="mk-stat"><span class="mk-label">총 평가</span><b id="holdings-value">-</b></div>
+                                    <div class="mk-stat"><span class="mk-label">총 손익</span><strong class="hd-pnl" id="holdings-pnl">-</strong></div>
+                                    <div class="mk-stat"><span class="mk-label">총 수익률</span><span class="hd-rate" id="holdings-pnl-rate">-</span></div>
+                                    <div class="mk-stat" title="지금 주문에 쓸 수 있는 원화 (업비트 '주문가능'과 같음)"><span class="mk-label">주문가능</span><b id="holdings-krw">-</b></div>
+                                    <!-- 업비트 '투자손익'처럼: 이미 판 코인의 손익 · 낸 수수료 (총 매수에는 안 들어가고 원화에서만 빠진 돈) -->
+                                    <div class="mk-stat hd-realized d-none" id="holdings-realized-stat"><span class="mk-label">판매 후 얻은 수익</span><span class="hd-realized-v" id="holdings-realized">-</span></div>
+                                </div>
+                                <button class="btn btn-sm btn-outline-primary dust-open" id="btn-dust-open" type="button" title="5,000원어치가 안 돼 팔 수 없는 코인을 조금 더 사서 합친 뒤 전부 팝니다"><i class="bi bi-stars me-1"></i>작은 코인 정리</button>
+                                <button class="btn btn-sm mk-refresh" id="btn-refresh-holdings" type="button" title="새로고침" aria-label="새로고침">
+                                    <i class="bi bi-arrow-clockwise"></i>
+                                </button>
+                            </div>
+                            <!-- 포트폴리오 현황: 평가수익률 추이 · 코인별 손익 · 보유 비중 (지금 가진 코인 기준) -->
+                            <div class="card-body ip-now border-bottom" id="pnl-chart-section">
+                                <div class="ip-sec-head" id="portfolio-head" role="button" tabindex="0" aria-expanded="true" aria-controls="portfolio-body" title="눌러서 접거나 펼치실 수 있습니다."><b>포트폴리오 현황</b><small>지금 가진 코인 기준 · 1분마다 갱신</small><span class="ip-fold" id="portfolio-fold"><span>접기</span><i class="bi bi-chevron-up"></i></span></div>
+                                <div class="ip-now-row" id="portfolio-body">
+                                    <div class="ip-card ip-line-card">
+                                        <div class="ip-card-head ip-card-tools">
+                                            <b>수익률 추이</b>
+                                            <button type="button" class="btn btn-sm pnl-expand" id="pnl-expand" title="크게 보기 (새 창)" aria-label="수익률 추이 크게 보기"><i class="bi bi-arrows-angle-expand"></i></button>
+                                            <div class="btn-group btn-group-sm" role="group" id="pnl-interval-group" aria-label="점 간격">
+                                                <button type="button" class="btn btn-outline-secondary active" data-interval="1m">1분</button><button type="button" class="btn btn-outline-secondary" data-interval="10m">10분</button>
+                                                <button type="button" class="btn btn-outline-secondary" data-interval="15m">15분</button>
+                                                <button type="button" class="btn btn-outline-secondary" data-interval="30m">30분</button>
+                                                <button type="button" class="btn btn-outline-secondary" data-interval="1h">1시간</button>
+                                                <button type="button" class="btn btn-outline-secondary" data-interval="4h">4시간</button>
+                                                <button type="button" class="btn btn-outline-secondary" data-interval="1d">일</button>
+                                                <button type="button" class="btn btn-outline-secondary" data-interval="1w">주</button>
+                                                <button type="button" class="btn btn-outline-secondary" data-interval="1M">월</button>
+                                                <button type="button" class="btn btn-outline-secondary" data-interval="1y">년</button>
+                                            </div>
+                                            <select class="form-select form-select-sm w-auto" id="pnl-coin-select" aria-label="코인 선택">
+                                                <option value="ALL">전체 (총 수익률)</option>
+                                            </select>
+                                            <select class="form-select form-select-sm w-auto" id="pnl-bench-select" aria-label="비교" title="같은 기간 이 코인처럼 움직였다면 (그래프 처음 값에서 출발)">
+                                                <option value="MARKET">시장 전체 평균</option>
+                                                <option value="TOP10">대형 코인 10개</option>
+                                                <option value="">비교 안 함</option>
+                                            </select>
+                                            <!-- 보유 코인 겹쳐 보기 (최대 5개, 코인마다 색 선) -->
+                                            <div class="dropdown pnl-coins-dd">
+                                                <button type="button" class="btn btn-sm pnl-coins-btn dropdown-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" id="pnl-coins-btn">코인 겹쳐 보기</button>
+                                                <div class="dropdown-menu p-0 pnl-coins-menu" id="pnl-coins-menu"></div>
+                                            </div>
+                                            <button type="button" class="btn btn-sm pnl-coins-btn pnl-align-btn" data-pnl-align aria-pressed="false" title="모든 선을 그래프 맨 왼쪽에서 0으로 맞춰, 그 뒤 오르고 내린 모양만 비교"><i class="bi bi-arrows-collapse"></i> 출발점 맞추기</button>
+                                            <button type="button" class="btn btn-sm pnl-coins-btn" id="pnl-cmp-btn" title="보고 있는 구간에 다른 코인들을 샀다면 지금보다 나았을지 · 코인마다 구간 수익률을 보고 고르십시오"><i class="bi bi-ui-checks-grid"></i> 다른 코인 비교</button>
+                                            <span class="small text-muted ms-auto" id="pnl-history-info"></span>
+                                        </div>
+                                        <div class="bd-pnl-legend d-none" id="pnl-legend" aria-live="polite"></div>
+                                        <div class="pnl-line" id="pnl-chart-area" style="position: relative; height: 240px;">
+                                            <canvas id="pnl-chart" aria-label="수익률 변화 그래프" role="img"></canvas>
+                                            <div id="pnl-chart-empty" class="position-absolute top-50 start-50 translate-middle text-center text-muted d-none"></div>
+                                        </div>
+                                    </div>
+                                    <!-- 코인별 손익: 손해 큰 10개 · 수익 큰 5개 (막대를 누르면 보유자산 표에서 그 코인만) -->
+                                    <div class="ip-card hd-coins d-none" id="hd-coins">
+                                        <div class="ip-card-head"><b>코인별 손익</b><span class="tf-seg ins-mode" role="group" aria-label="금액 · 수익률"><button type="button" class="active" data-ins-mode="krw">금액</button><button type="button" data-ins-mode="pct">%</button></span><small id="hd-ins-coins-sub"></small></div>
+                                        <div class="hd-ins-body"><canvas id="hd-ins-coins" aria-label="코인별 손익 막대 그래프" role="img"></canvas></div>
+                                    </div>
+                                    <!-- 보유 비중 (업비트 투자내역과 같은 모양): 왼쪽 목록 · 오른쪽 도넛, 평가금액 기준 상위 9개 + 기타 -->
+                                    <div class="ip-card">
+                                        <div class="ip-card-head"><b>보유 비중</b><small>평가금액 기준</small></div>
+                                        <div class="hd-share d-none" id="hd-share">
+                                            <div class="hd-share-legend" id="hd-share-legend"></div>
+                                            <div class="hd-share-donut">
+                                                <canvas id="hd-share-chart" aria-label="보유 비중 도넛 그래프" role="img"></canvas>
+                                                <div class="hd-share-center">보유 비중<br>(%)</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <!-- 다른 코인 비교 (왼쪽: 고른 코인 표) · 고른 코인에 봇을 적용했다면 (오른쪽) — 코인을 고르면 보임 -->
+                                <div class="cmp-row d-none" id="cmp-row">
+                                <div class="ip-card pnl-cmp-card"><div class="pnl-cmp-box" id="pnl-cmp-box"></div></div>
+                                <!-- 고른 코인에 봇을 적용했다면: '다른 코인 비교'에서 고른 코인을 구간 처음에 같은 금액씩 산 뒤 봇 규칙 vs 그냥 들고 있기 -->
+                                <div class="ip-card cmpbot-card" id="cmpbot-card">
+                                    <div class="ip-card-head ip-card-tools">
+                                        <b>고른 코인에 봇을 적용했다면</b>
+                                        <small class="text-muted">구간 처음에 같은 금액씩 산 뒤 · 봇 적용(봇 규칙대로 사고팔기) vs 봇 미적용(그냥 들고 있기)</small>
+                                        <select class="form-select form-select-sm w-auto ms-auto" id="cmpbot-bot" aria-label="적용할 봇"></select>
+                                        <button type="button" class="btn btn-sm btn-primary" id="cmpbot-run"><i class="bi bi-play-fill"></i> 계산하기</button>
+                                    </div>
+                                    <div class="cmpbot-info small text-muted" id="cmpbot-info"></div>
+                                    <div class="cmpbot-progress d-none" id="cmpbot-progress"><span class="sta-progress"><i style="width:0%"></i></span><small></small></div>
+                                    <div class="cmpbot-result d-none" id="cmpbot-result">
+                                        <div class="bd-pnl-legend" id="cmpbot-legend"></div>
+                                        <div class="cmpbot-chart"><canvas id="cmpbot-chart" aria-label="봇 적용 · 봇 미적용 수익률 그래프" role="img"></canvas></div>
+                                        <div class="cmpbot-table-wrap"><table class="table table-sm cmp-table mb-0" id="cmpbot-table"></table></div>
+                                        <div class="cmpbot-notes small text-muted" id="cmpbot-notes"></div>
+                                    </div>
+                                </div>
+                                </div>
+                            </div>
+                            <!-- 조건 검색 (전체코인 분석과 같은 사이드바를 이 자리로 옮겨 씀): 켜면 보유 코인 중 조건에 맞는 것만 -->
+                            <div class="mk-layout">
+                                <div class="screen-aside-slot" id="holdings-aside-slot"></div>
+                                <div class="mk-main">
+                                <div class="screen-panel-slot" id="holdings-panel-slot"></div>
+                                <ul class="nav nav-tabs sub-tabs" role="tablist">
+                                    <li class="nav-item" role="presentation">
+                                        <button class="nav-link active" id="holdings-status-tab" data-bs-toggle="tab" data-bs-target="#holdings-status-pane" type="button" role="tab">보유 현황 · 저점수익률</button>
+                                    </li>
+                                    <li class="nav-item" role="presentation">
+                                        <button class="nav-link" id="holdings-signals-tab" data-bs-toggle="tab" data-bs-target="#holdings-signals-pane" type="button" role="tab"><i class="bi bi-tags me-1"></i>신호 모아보기</button>
+                                    </li>
+                                    <li class="nav-item ms-auto pb-1 d-flex align-items-center gap-2">
+                                        <!-- 상장폐지 코인 보기 · 안 보기 (기억) -->
+                                        <label class="hd-delist-toggle d-none" id="holdings-delist-toggle" title="상장폐지 코인을 목록과 위 합계에 넣을지 정합니다 (넣으면 팔 수 없어 0원으로 칩니다)">
+                                            <input type="checkbox" class="form-check-input" id="holdings-show-delisted" checked> 상장폐지 보기 <span class="hd-delist-n" id="holdings-delisted-n"></span>
+                                        </label>
+                                        <input type="search" class="form-control form-control-sm" id="holdings-search" placeholder="코인명·심볼 검색 (초성 가능)" aria-label="코인 검색" autocomplete="off">
+                                        <!-- 조건 끄기 = 모든 코인 보기 (전체코인 분석과 같은 단추 · 같은 조건 상태) -->
+                                        <button type="button" class="screen-all-btn" id="btn-screen-all-hold" data-screen-all title="고른 조건을 끄고 모든 코인 보기"><i class="bi bi-grid-3x3-gap"></i><span>모든 코인 보기</span></button>
+                                    </li>
+                                </ul>
+                                <div class="tab-content">
+                                <div class="tab-pane fade" id="holdings-signals-pane" role="tabpanel"><div class="sig-board" data-sig-scope="holdings"></div></div>
+<div class="tab-pane fade show active" id="holdings-status-pane" role="tabpanel">
+                                <!-- 기간 시세를 불러오는 동안만 보이는 상태 줄 (비어 있으면 숨김) -->
+                                <div class="card-body border-bottom py-2 small text-muted" id="lows-loading" role="status"></div>
+                                <!-- 선택한 코인 일괄 주문 (고른 코인이 있을 때만 보임) -->
+                                <div class="card-body border-bottom py-2 selbar d-none" id="holdings-selbar">
+                                    <span class="fw-semibold me-3"><i class="bi bi-check2-square me-1"></i><span id="holdings-sel-count">0</span>개 선택됨</span>
+                                    <button type="button" class="btn btn-sm btn-danger me-1" data-batch="holdings" data-side="buy"><i class="bi bi-cart-plus me-1"></i>선택 매수</button>
+                                    <button type="button" class="btn btn-sm btn-primary me-1" data-batch="holdings" data-side="sell"><i class="bi bi-cash-coin me-1"></i>선택 매도</button>
+                                    <button type="button" class="btn btn-sm btn-light border" data-batch-clear="holdings">선택 해제</button>
+                                </div>
+                                <div class="card-body p-0">
+                                    <div class="table-responsive table-scroll">
+                                        <table class="table table-hover mb-0 data-table" id="holdings-table">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th class="sel-cell"><input type="checkbox" class="form-check-input" id="holdings-sel-all" aria-label="보이는 코인 전체 선택"></th>
+                                                    <th data-sort="alert_level" title="상폐 · 유의 · 입출금 중단 · 주의 · 공지 표시이며, 누르면 위험한 순으로 정렬됩니다.">알림</th>
+                                                    <th data-sort="korean_name" title="아래 줄: 보유 수량">코인</th>
+                                                    <th id="holdings-spark-header" title="정렬 중인 기간의 종가 추이 (조건 검색을 켜면 그 조건 그래프)">추이 (30일)</th>
+                                                    <th class="text-end" data-sort="current_price" title="지금 가격">현재가</th>
+                                                    <th class="text-end" data-sort="avg_buy_price" title="내 평균 매수가 (여러 번 샀으면 평균) · 수익률은 오른쪽 칸">매수가</th>
+                                                    <th class="text-end" data-sort="change_rate" title="업비트 기준 전일 종가(오전 9시) 대비 등락률">전일대비</th>
+                                                    <th class="text-end grp" data-sort="current_value" title="아래 줄: 투자금(매수금액)">평가금액</th>
+                                                    <th class="text-end" data-sort="pnl_rate" title="평균 매수가 대비 수익률 · 아래 줄: 손익">수익률</th>
+                                                    <th class="text-end grp" data-sort="low_d1_rate" title="최근 24시간 최저가보다 현재가가 몇 % 높은지">전일저점</th>
+                                                    <th class="text-end" data-sort="low_w1_rate" title="최근 7일 최저가 대비">주간저점</th>
+                                                    <th class="text-end" data-sort="low_m1_rate" title="최근 30일 최저가 대비">월간저점</th>
+                                                    <th class="text-end" data-sort="low_h6_rate" title="최근 6개월(26주) 최저가 대비">6개월</th>
+                                                    <th class="text-end" data-sort="low_y1_rate" title="최근 1년(52주) 최저가 대비. 0%에 가까우면 1년 바닥 근처">연간저점</th>
+                                                    <th class="text-end grp" data-sort="trade_value_24h" title="최근 24시간 동안 업비트에서 거래된 금액 (백만 원)">거래대금</th>
+                                                    <th class="text-end" data-sort="first_buy_ts" title="지금 가진 수량을 처음 산 때 (다 팔았다가 다시 샀으면 다시 산 때부터) · 아래 줄: 그 뒤 더 샀으면 마지막으로 산 때">매수일</th>
+                                                    <th class="text-end">주문</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="holdings-tbody">
+                                                <tr>
+                                                    <td colspan="17" class="text-center py-4 text-muted">불러오는 중...</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                </div>
+
+
+                                </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- 투자손익 (업비트 '투자손익'처럼): 기간 누적 손익 · 금액가중 누적 수익률 · 기간 평균 투자금액 + 그래프 2개 + 날짜별 표 -->
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <!-- 실전 매매 시작 확인 창 -->
+    <!-- 매매 내역에서 코인을 누르면: 그 코인의 캔들 + 이 봇의 매수(▲)·매도(▼) -->
+    <div class="modal fade" id="trade-chart-modal" tabindex="-1" aria-labelledby="tc-title" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div class="tc-head"><span class="tc-logo" id="tc-logo"></span><div><h5 class="modal-title" id="tc-title">코인</h5><small id="tc-sub"></small></div></div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="tc-bar">
+                        <div class="tc-stats" id="tc-stats"></div>
+                        <div class="hc-units" id="tc-units" role="group" aria-label="캔들 단위"></div>
+                    </div>
+                    <div class="tc-chart" id="tc-chart"></div>
+                    <div class="tc-legend"><span class="lg-buy">▲ 매수</span><span class="lg-sell">▼ 매도</span><span class="tc-note" id="tc-note"></span></div>
+                    <div class="db-trades tc-list" id="tc-list"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 조건 설명: 그림 · 숫자의 뜻 · 봇에서 쓰는 법 · 지금 맞는 코인 예시 (조건 옆 ⓘ) -->
+    <div class="modal fade" id="cond-explain-modal" tabindex="-1" aria-labelledby="cx-title" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content cx">
+                <div class="modal-header">
+                    <div class="cx-head">
+                        <span class="cx-icon" id="cx-icon"></span>
+                        <div><h5 class="modal-title" id="cx-title">조건</h5><div class="cx-tags" id="cx-tags"></div></div>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="cx-summary" id="cx-summary"></div>
+                    <div class="cx-sketch-box" id="cx-sketch"></div>
+                    <div class="cx-grid">
+                        <div class="cx-card"><h6><i class="bi bi-sliders"></i>지금 숫자로 보면</h6><p id="cx-desc"></p></div>
+                        <div class="cx-card"><h6><i class="bi bi-robot"></i>봇에서는</h6><div id="cx-bot"></div></div>
+                    </div>
+                    <div class="cx-card cx-rel d-none" id="cx-rel"></div>
+                    <div class="cx-card d-none" id="cx-proof"></div>
+                    <div class="cx-card" id="cx-ex-card"><h6><i class="bi bi-graph-up"></i>지금 이 조건에 맞는 코인 <small id="cx-count"></small></h6><div class="cx-examples" id="cx-examples"></div></div>
+                    <div class="cx-foot">그림은 조건의 모양을 설명하려고 그린 예시입니다. 조건은 지금의 모습을 거르는 기준이며 앞으로의 가격을 뜻하지 않습니다.</div>
+                </div>
+                <div class="modal-footer" id="cx-actions"></div>
+            </div>
+        </div>
+    </div>
+    <!-- 검증 보기: 과거 90일 결과 / 직접 검증하기 — 급등 한 건씩 캔들차트에 판 곳·다시 산 곳 표시 -->
+    <div class="modal fade" id="spike-verify-modal" tabindex="-1" aria-labelledby="spike-verify-title" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-fullscreen-lg-down modal-dialog-scrollable">
+            <div class="modal-content sv">
+                <div class="modal-header">
+                    <div>
+                        <div class="proof-kicker"><i class="bi bi-bar-chart-line-fill"></i> 검증 보기 · 봇과 같은 계산</div>
+                        <h5 class="modal-title" id="spike-verify-title">순간 급등 때 일부 팔고 다시 사기</h5>
+                    </div>
+                    <div class="sv-tabs" role="tablist">
+                        <button type="button" class="active" data-sv-tab="past"><i class="bi bi-clock-history"></i> 과거 90일 결과</button>
+                        <button type="button" data-sv-tab="live"><i class="bi bi-play-circle"></i> 직접 검증하기</button>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- 과거 90일 -->
+                    <div data-sv-pane="past">
+                        <div class="sv-kpis" id="sv-past-kpis"></div>
+                        <div class="sv-grid">
+                            <div class="sv-card"><div class="sv-card-head"><h6>보유 코인 수 변화 누적</h6><small>급등 때마다 보유의 30%로 한 번씩 · 시간순</small></div>
+                                <div class="sv-chart"><canvas id="sv-past-curve"></canvas></div></div>
+                            <div class="sv-card"><div class="sv-card-head"><h6>달별 결과</h6></div><div id="sv-past-months"></div></div>
+                        </div>
+                        <div class="sv-card"><div class="sv-card-head"><h6>급등 한 건씩</h6><small>줄을 누르면 오른쪽 캔들차트에 판 곳·다시 산 곳이 나옵니다</small></div>
+                            <div class="sv-split"><div class="sv-events" id="sv-past-events"></div><div class="sv-candle-box" id="sv-past-candle"></div></div></div>
+                    </div>
+                    <!-- 직접 검증하기 -->
+                    <div data-sv-pane="live" class="d-none">
+                        <div class="sv-card sv-form">
+                            <div><label class="form-label" for="sv-coin">코인</label><select class="form-select" id="sv-coin"></select></div>
+                            <div><label class="form-label" for="sv-days">기간</label>
+                                <select class="form-select" id="sv-days"><option value="7">최근 7일</option><option value="14">최근 14일</option><option value="30" selected>최근 30일</option><option value="60">최근 60일</option><option value="90">최근 90일</option></select></div>
+                            <button type="button" class="btn btn-primary" id="sv-run"><i class="bi bi-play-fill me-1"></i>검증 시작</button>
+                            <div class="sv-form-note">업비트 1분봉을 받아 봇과 똑같이 계산합니다 (<span id="sv-eta">30일이면 1~2분</span>). 기준은 기본값: 1분 거래대금 평소의 5배 · 1분 +5% · 1시간 +10%, 꺾이면 30% 팔고 −3·−5·−8%에 다시 사기.</div>
+                        </div>
+                        <div class="sv-progress d-none" id="sv-progress"><div class="sv-progress-text" id="sv-progress-text">1분봉 받는 중…</div><div class="progress"><div class="progress-bar progress-bar-striped progress-bar-animated" id="sv-progress-bar" style="width:0%"></div></div></div>
+                        <div id="sv-live-result" class="d-none">
+                            <div class="sv-kpis" id="sv-live-kpis"></div>
+                            <div class="sv-card"><div class="sv-card-head"><h6>100만 원어치 코인을 가졌다면</h6><small>세트 적용 vs 세트 미적용</small></div>
+                                <div class="sv-chart"><canvas id="sv-live-curve"></canvas></div></div>
+                            <div class="sv-card"><div class="sv-card-head"><h6>급등 한 건씩</h6><small>줄을 누르면 캔들차트에 판 곳·다시 산 곳이 나옵니다</small></div>
+                                <div class="sv-split"><div class="sv-events" id="sv-live-events"></div><div class="sv-candle-box" id="sv-live-candle"></div></div></div>
+                        </div>
+                    </div>
+                    <div class="sv-foot">과거 기록이며 앞으로도 같다는 뜻은 아닙니다 · 수수료 0.05%와 불리한 체결 0.2%를 사고팔 때마다 뺐습니다 · 차트 시각은 한국 시간</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- 순간 급등 · 일부 팔고 다시 사기: 과거 검증 결과 (tools/spike_backtest.py --mode improve, 업비트 1분봉 90일·50종) -->
+    <div class="modal fade" id="spike-proof-modal" tabindex="-1" aria-labelledby="spike-proof-title" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content proof">
+                <div class="modal-header">
+                    <div>
+                        <div class="proof-kicker"><i class="bi bi-patch-check-fill"></i> 과거 데이터로 검증한 규칙</div>
+                        <h5 class="modal-title" id="spike-proof-title">순간 급등 때 일부 팔고 다시 사기</h5>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="proof-lead">업비트에서 거래가 가장 많은 코인 50개의 <b>1분봉 90일치</b>(2026년 6월 29일 ~ 9월 27일)에 이 규칙을 그대로 대 봤습니다. 수수료와 불리하게 체결되는 몫까지 모두 뺀 결과입니다.</p>
+                    <div class="proof-stats">
+                        <div class="proof-stat is-main"><div class="ps-v"><span data-sv="more_pct">-</span></div><div class="ps-l">코인이 늘어난 비율</div><div class="ps-s"><span data-sv="n">-</span>번 중 <span data-sv="more">-</span>번</div></div>
+                        <div class="proof-stat"><div class="ps-v"><span data-sv="avg">-</span></div><div class="ps-l">한 번에 평균</div><div class="ps-s">판 몫의 코인 수 기준</div></div>
+                        <div class="proof-stat"><div class="ps-v"><span data-sv="weeks_neg">-</span>주</div><div class="ps-l">손해 본 주</div><div class="ps-s"><span data-sv="weeks">-</span>주 중 (보유의 30%만 팔 때)</div></div>
+                    </div>
+                    <h6 class="proof-h">같은 90일, 다른 방법과 비교하면</h6>
+                    <div class="proof-bars">
+                        <div class="pb-row"><span class="pb-l">아무 때나 팔고 다시 사기</span><span class="pb-bar"><i class="is-neg" data-sv-bar="random"></i></span><span class="pb-v is-neg" data-sv="random">-</span></div>
+                        <div class="pb-row"><span class="pb-l">급등이면 모두 (1시간 조건 없이)</span><span class="pb-bar"><i data-sv-bar="nofilter"></i></span><span class="pb-v" data-sv="nofilter">-</span></div>
+                        <div class="pb-row is-best"><span class="pb-l"><b>이 규칙</b> (크게 오른 뒤 급등만)</span><span class="pb-bar"><i data-sv-bar="rule"></i></span><span class="pb-v"><b data-sv="rule">-</b></span></div>
+                        <div class="pb-note">한 번 사고팔 때 판 몫의 코인이 평균 몇 % 늘었는지</div>
+                    </div>
+                    <h6 class="proof-h"><i class="bi bi-shield-check"></i> 우연이 아닌지 따로 확인했습니다</h6>
+                    <div class="proof-check">
+                        <div><span class="pc-tag">기준 정하기</span>7~8월 자료로만 기준을 정했습니다 <span class="pc-num"><span data-sv="train_n">-</span>번 중 <span data-sv="train_more">-</span>번 늘어남 · 평균 <span data-sv="train_avg">-</span></span></div>
+                        <div><span class="pc-tag is-test">그대로 확인</span>그 기준을 보지 않았던 <b>9월</b>에 그대로 대 봤습니다 <span class="pc-num"><b><span data-sv="test_n">-</span>번 중 <span data-sv="test_more">-</span>번 늘어남 · 평균 <span data-sv="test_avg">-</span></b></span></div>
+                    </div>
+                    <div class="proof-caution">
+                        <i class="bi bi-info-circle"></i>
+                        <div>과거 90일의 기록입니다. 앞으로도 같다는 뜻은 아니고, 가장 나빴던 한 번은 판 몫의 코인이 <span data-sv="worst">-</span> 줄었습니다.
+                        급등은 50종 전체에서 한 주에 4번 정도라, 봇이 가진 코인에서는 드물게 일어납니다. <b>처음엔 시뮬레이션 봇으로</b> 지켜보시길 권합니다.</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-success" data-open-verify><i class="bi bi-bar-chart-line me-1"></i>캔들차트로 직접 보기</button>
+                    <a class="btn btn-outline-primary" href="https://app.strahub.com/blog/spike-sell-rebuy" target="_blank" rel="noopener">
+                        <i class="bi bi-journal-text me-1"></i>검증 과정 전체 보기 (StraHub 블로그) <i class="bi bi-box-arrow-up-right ms-1"></i></a>
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">확인</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- 계정 안내 창: 업비트 모드의 봇 시작·사기가 LICENSE_REQUIRED 로 거절됐을 때 -->
+    <div class="modal fade" id="license-modal" tabindex="-1" aria-labelledby="license-title" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="license-title"><i class="bi bi-lock text-primary me-2"></i>이 기능은 StraBot 계정 로그인이 필요합니다</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-primary py-2 small mb-3" id="license-reason"></div>
+                    <p class="small mb-2"><b>StraBot은 무료입니다.</b> 무료 계정으로 로그인하면 업비트 · 빗썸 실제 주문 봇과 차트 예약 매수까지 모두 쓸 수 있습니다. 시뮬레이션은 계정 없이 그대로 쓸 수 있습니다.</p>
+                    <ul class="small ps-3 mb-0">
+                        <li class="mb-1">가진 코인을 <b>파는 것</b>(팔기 · 손절 · 봇 멈추기)은 로그인과 상관없이 언제든 할 수 있습니다.</li>
+                        <li>서버로 보내는 것은 이메일 · 설치 ID · 프로그램 버전뿐입니다. 거래소 키 · 잔고 · 매매 기록은 보내지 않습니다.</li>
+                    </ul>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">닫기</button>
+                    <a class="btn btn-outline-primary" data-signup-link href="#" target="_blank" rel="noopener noreferrer"><i class="bi bi-person-plus me-1"></i> 계정 만들기</a>
+                    <a class="btn btn-outline-primary" data-pricing-link href="https://strabot.mayai.kr/pricing" target="_blank" rel="noopener noreferrer"><i class="bi bi-info-circle me-1"></i> 무료 안내</a>
+                    <button type="button" class="btn btn-primary" id="license-open-account"><i class="bi bi-person-badge me-1"></i> 계정 화면 열기</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- 보유 코인 맡기기: 계좌 코인을 봇 장부에 넣어 매도 조건 · 손절 · 익절로 관리 (팔기만 하는 봇) -->
+    <!-- 위험 관리: 추천 묶음의 근거 (제목 줄 '추천 근거'로 열기) -->
+    <div class="modal fade" id="risk-proof-modal" tabindex="-1" aria-labelledby="risk-proof-title" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg"><div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title" id="risk-proof-title"><i class="bi bi-clipboard-data me-2"></i>추천 묶음의 근거</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button></div>
+            <div class="modal-body risk-proof-body">
+                <p class="hp-one">지난 자료로 <b>손절 · 익절 숫자만 바꿔 가며</b> 돌려 본 결과입니다</p>
+                <section class="hp-sec"><h6>어떻게 계산했습니까</h6>
+                    <div class="hp-steps"><div><i class="bi bi-cart3"></i><b>사서 들고 있기</b></div><i class="bi bi-arrow-right hp-arrow"></i>
+                        <div><i class="bi bi-flag"></i><b>손절 · 익절 선에 닿으면 팖</b></div><i class="bi bi-arrow-right hp-arrow"></i>
+                        <div><i class="bi bi-receipt"></i><b>수수료 포함</b></div></div>
+                    <div class="hp-chips mt-2"><span>급등 잦던 코인 90일 (하락장)</span><span>15분봉 1년 · 90일</span><span>1분봉 30일 (오른 시기)</span></div></section>
+                <section class="hp-sec"><h6>표 읽는 법</h6>
+                    <div class="hp-formula"><span>평균 결과</span><em>/</em><span>크게 망한 10%</span></div>
+                    <div class="hp-eg mt-2"><div class="hp-eg-row"><span class="hp-eg-k">−11.1% / −20%</span><b class="hp-eg-v">평균 −11.1%</b><span class="hp-eg-d">운이 나빴던 10%는 −20%쯤</span></div></div></section>
+                <div class="table-responsive"><table class="table table-sm mb-1"><caption class="d-none">추천 근거</caption>
+                                                <thead><tr><th>묶음</th><th class="text-end">급등 잦던 코인 90일<br><small>2025-09~2026-10 하락장</small></th><th class="text-end">15분봉 1년 · 90일</th><th class="text-end">1분봉 · 30일<br><small>오른 시기</small></th></tr></thead>
+                                                <tbody>
+                                                    <tr><td>보수적 (15 · 30)</td><td class="text-end">−6.0% / −15%</td><td class="text-end">−5.2% / −15%</td><td class="text-end">+4.9% / −15%</td></tr>
+                                                    <tr class="is-pick"><td>균형 (20 · 50)</td><td class="text-end">−11.1% / −20%</td><td class="text-end">−9.3% / −20%</td><td class="text-end">+6.3% / −20%</td></tr>
+                                                    <tr><td>공격적 (30 · 100)</td><td class="text-end">−18.2% / −30%</td><td class="text-end">−15.5% / −30%</td><td class="text-end">+6.8% / −25%</td></tr>
+                                                    <tr class="is-mute"><td>손절 · 익절 없음</td><td class="text-end">−22.6% / −50%</td><td class="text-end">−19.8% / −50%</td><td class="text-end">+5.4% / −24%</td></tr>
+                                                </tbody></table></div>
+                <section class="hp-sec"><h6>정리</h6><ul class="hp-use">
+                    <li class="is-info"><i class="bi bi-info-circle-fill"></i><div><b>내리는 시기</b><span>손절 · 익절 폭이 좁을수록 덜 잃습니다</span></div></li>
+                    <li class="is-info"><i class="bi bi-info-circle-fill"></i><div><b>오르는 시기</b><span>폭이 넓을수록 더 법니다</span></div></li>
+                    <li class="is-ok"><i class="bi bi-check-circle-fill"></i><div><b>균형 (20 · 50) = 추천</b><span>세 경우 모두 크게 튀지 않았습니다</span></div></li>
+                    <li class="is-warn"><i class="bi bi-exclamation-triangle-fill"></i><div><b>손절 · 익절 없음</b><span>크게 망한 쪽이 −50%까지 갔습니다</span></div></li></ul></section>
+                <p class="hp-foot">근거가 있는 건 손절 · 익절 숫자입니다 · 1회 매수 · 최대 보유 · 하루 한도는 묶음 성격에 맞춰 정한 값 · 지난 결과일 뿐 앞으로를 보장하지 않습니다</p>
+            </div>
+            <div class="modal-footer"><button type="button" class="btn btn-primary" data-bs-dismiss="modal">확인</button></div>
+        </div></div>
+    </div>
+    <div class="modal fade" id="adopt-modal" tabindex="-1" aria-labelledby="adopt-title" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="adopt-title"><i class="bi bi-box-arrow-in-down me-2"></i>보유 코인 맡기기 <small class="text-muted fw-normal" id="adopt-bot"></small></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="adopt-help">고른 코인은 <b>지금 수량 그대로</b> 이 봇이 관리합니다. 손절 · 익절은 <b>맡긴 순간의 가격부터</b> 잽니다 (원래 평균 매수가가 아니라서, 이미 많이 내린 코인도 맡기자마자 팔리지 않습니다).
+                        매수 조건이 없어도 <b>매도 조건 · 손절 · 익절</b>로 팔고, 체크를 풀면 팔지 않고 관리만 그만둡니다.
+                        다른 봇이 가진 코인은 맡길 수 없습니다 (한 코인은 한 봇만).</p>
+                    <div class="adopt-list" id="adopt-list"><div class="text-muted small p-3">불러오는 중…</div></div>
+                    <!-- 맡긴 코인 정리: 원래 평균가 대비 손절선을 넘은 코인을 골라 직접 확인한 뒤에만 팖 -->
+                    <div class="adopt-clean d-none" id="adopt-clean"></div>
+                </div>
+                <div class="modal-footer">
+                    <span class="me-auto small text-muted" id="adopt-count"></span>
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">취소</button>
+                    <button type="button" class="btn btn-primary" id="adopt-save"><i class="bi bi-check-lg me-1"></i>맡기기 저장</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade" id="live-start-modal" tabindex="-1" aria-labelledby="live-start-title" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="live-start-title"><i class="bi bi-exclamation-octagon text-danger me-2"></i>실전 자동매매를 시작하시겠습니까?</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="ls-warn"><i class="bi bi-exclamation-triangle-fill"></i>
+                        <span>봇이 <strong>내 업비트 계좌의 실제 돈으로</strong> 아래 규칙대로 사고팝니다. 정한 규칙을 실행할 뿐이며 <strong>수익을 보장하지 않고 손실이 날 수 있습니다.</strong></span></div>
+                    <!-- 요약 3칸 + 매수 · 매도 · 안전장치 묶음 (JS 가 채움) -->
+                    <div id="live-start-summary"></div>
+                    <ul class="ls-notes">
+                        <li>설정은 언제든 바꿀 수 있고, [중지]를 누르면 새 주문을 멈춥니다 (가진 코인은 그대로).</li>
+                        <li>API 키에는 조회 · 주문 권한만 — <strong>출금 권한은 주지 마십시오.</strong></li>
+                        <li>처음에는 작은 배분 비율로 시험해 보길 권합니다.</li>
+                    </ul>
+                    <div class="form-check ls-agree">
+                        <input class="form-check-input" type="checkbox" id="live-start-agree">
+                        <label class="form-check-label small fw-semibold" for="live-start-agree">
+                            실제 돈으로 거래되고 손실이 날 수 있다는 것을 이해했습니다
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">취소</button>
+                    <button type="button" class="btn btn-success" id="live-start-confirm" disabled>
+                        <i class="bi bi-play-fill me-1"></i> 실전 매매 시작
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 코인 매수 확인 창 (전체코인 분석) -->
+    <div class="modal fade" id="buy-modal" tabindex="-1" aria-labelledby="buy-title" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="buy-title">매수</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-danger py-2 small mb-2 d-none" id="buy-risk"></div>
+                    <div class="alert alert-warning py-2 small mb-3">
+                        <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                        {% if app_mode == 'sim' %}<strong>시뮬레이션 가상 계좌의 원화로 지금 가격(시장가)에 삽니다.</strong> 실제 계좌와는 섞이지 않습니다.{% else %}<strong>실제 {{ ex_name }} 계좌의 원화로 지금 가격(시장가)에 삽니다.</strong> 주문 후에는 되돌릴 수 없습니다.{% endif %}
+                    </div>
+                    <div class="d-flex justify-content-between small mb-2">
+                        <span class="text-muted">주문 가능 원화</span><strong id="buy-krw">확인 중…</strong>
+                    </div>
+                    <div class="btn-group w-100 mb-2" role="group" aria-label="매수 금액">
+                        <button type="button" class="btn btn-outline-secondary" data-amount="10000">1만</button>
+                        <button type="button" class="btn btn-outline-secondary" data-amount="50000">5만</button>
+                        <button type="button" class="btn btn-outline-secondary" data-amount="100000">10만</button>
+                        <button type="button" class="btn btn-outline-secondary" data-amount="500000">50만</button>
+                    </div>
+                    <label class="form-label small text-muted mb-1" for="buy-amount">매수 금액 (원)</label>
+                    <input type="number" class="form-control mb-3" id="buy-amount" min="5000" step="1000" inputmode="numeric">
+                    <div class="d-flex justify-content-between small mb-1">
+                        <span class="text-muted">현재가 (시장가)</span><span id="buy-price">-</span>
+                    </div>
+                    <div class="d-flex justify-content-between small">
+                        <span class="text-muted">예상 수량 <span class="text-muted">(수수료 0.05% 별도)</span></span><strong id="buy-qty">-</strong>
+                    </div>
+                    <div class="small text-danger mt-2" id="buy-hint"></div>
+                    <div class="small text-danger mt-2 fw-semibold" id="buy-error" role="alert"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">취소</button>
+                    <button type="button" class="btn btn-danger" id="buy-confirm">시장가 매수</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 선택한 코인 일괄 주문 확인 창 -->
+    <div class="modal fade" id="batch-modal" tabindex="-1" aria-labelledby="batch-title" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="batch-title">선택 주문</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning py-2 small mb-3">
+                        <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                        {% if app_mode == 'sim' %}<strong>시뮬레이션 가상 계좌에서 아래 코인들을 한꺼번에 지금 가격(시장가)으로 주문합니다.</strong> 실제 계좌와는 섞이지 않습니다.{% else %}<strong>실제 {{ ex_name }} 계좌에서 아래 코인들을 한꺼번에 지금 가격(시장가)으로 주문합니다.</strong> 주문 후에는 되돌릴 수 없습니다.{% endif %}
+                    </div>
+                    <div id="batch-controls" class="mb-3"></div>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-2" id="batch-table">
+                            <thead class="table-light"><tr id="batch-head"></tr></thead>
+                            <tbody id="batch-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div class="d-flex justify-content-between small fw-semibold" id="batch-total"></div>
+                    <div class="small text-danger mt-2" id="batch-hint"></div>
+                    <div class="small text-danger mt-2 fw-semibold" id="batch-error" role="alert"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal" id="batch-cancel">취소</button>
+                    <button type="button" class="btn btn-danger" id="batch-confirm">주문</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 보유 코인 매도 확인 창 -->
+    <div class="modal fade" id="sell-modal" tabindex="-1" aria-labelledby="sell-title" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="sell-title">매도</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning py-2 small mb-3">
+                        <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                        {% if app_mode == 'sim' %}<strong>시뮬레이션 가상 계좌에서 지금 가격(시장가)으로 팝니다.</strong> 실제 계좌와는 섞이지 않습니다.{% else %}<strong>실제 {{ ex_name }} 계좌에서 지금 가격(시장가)으로 팝니다.</strong> 주문 후에는 되돌릴 수 없습니다.{% endif %}
+                    </div>
+                    <div class="d-flex justify-content-between small mb-2">
+                        <span class="text-muted">주문 가능</span><strong id="sell-available">-</strong>
+                    </div>
+                    <div class="btn-group w-100 mb-2 ratio-seg" role="group" aria-label="매도 비율">
+                        <button type="button" class="btn btn-outline-secondary" data-ratio="0.01">1%</button>
+                        <button type="button" class="btn btn-outline-secondary" data-ratio="0.03">3%</button>
+                        <button type="button" class="btn btn-outline-secondary" data-ratio="0.05">5%</button>
+                        <button type="button" class="btn btn-outline-secondary" data-ratio="0.1">10%</button>
+                        <button type="button" class="btn btn-outline-secondary" data-ratio="0.25">25%</button>
+                        <button type="button" class="btn btn-outline-secondary" data-ratio="0.5">50%</button>
+                        <button type="button" class="btn btn-outline-secondary" data-ratio="0.75">75%</button>
+                        <button type="button" class="btn btn-outline-secondary" data-ratio="1">100%</button>
+                    </div>
+                    <label class="form-label small text-muted mb-1" for="sell-qty">매도 수량</label>
+                    <input type="number" class="form-control mb-3" id="sell-qty" min="0" step="any" inputmode="decimal">
+                    <div class="d-flex justify-content-between small mb-1">
+                        <span class="text-muted">현재가 (시장가)</span><span id="sell-price">-</span>
+                    </div>
+                    <div class="d-flex justify-content-between small mb-1">
+                        <span class="text-muted">예상 받을 금액 <span class="text-muted">(수수료 0.05% 제외)</span></span><strong id="sell-amount">-</strong>
+                    </div>
+                    <div class="d-flex justify-content-between small">
+                        <span class="text-muted">예상 손익 (평균 매수가 기준)</span><span id="sell-pnl">-</span>
+                    </div>
+                    <div class="small text-danger mt-2" id="sell-hint"></div>
+                    <div class="small text-danger mt-2 fw-semibold" id="sell-error" role="alert"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">취소</button>
+                    <button type="button" class="btn btn-primary" id="sell-confirm">시장가 매도</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- 대시보드 JavaScript -->
+                            <!-- 봇별 수익률 비교 크게 보기: 간격은 화면과 함께 · 휠로 확대 · 끌어서 옮기기 · 두 번 눌러 원래대로 -->
+                            <div class="modal fade" id="bb-cmp-modal" tabindex="-1" aria-labelledby="bb-cmp-big-title">
+                                <div class="modal-dialog modal-xl modal-dialog-centered">
+                                    <div class="modal-content">
+                                        <div class="modal-header">
+                                            <b id="bb-cmp-big-title">봇별 수익률 비교</b>
+                                            <div class="db-seg ms-3" id="bb-cmp-big-units" role="group" aria-label="간격"><button type="button" data-cmp-big="1m">1분</button><button type="button" data-cmp-big="10m">10분</button><button type="button" data-cmp-big="15m">15분</button><button type="button" data-cmp-big="30m">30분</button><button type="button" data-cmp-big="1h">1시간</button><button type="button" data-cmp-big="4h">4시간</button><button type="button" data-cmp-big="1d">일</button><button type="button" data-cmp-big="1w">주</button><button type="button" data-cmp-big="1M">월</button></div>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary ms-auto me-2 d-none" id="bb-cmp-big-reset"><i class="bi bi-arrow-counterclockwise"></i> 원래대로</button>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+                                        </div>
+                                        <div class="modal-body">
+                                            <div class="bb-cmp-big-area"><canvas id="bb-cmp-big-chart" aria-label="봇별 수익률 비교 크게 보기" role="img"></canvas></div>
+                                            <small class="text-muted">마우스 휠로 확대 · 끌어서 옮기기 · 그래프를 두 번 누르면 원래대로 · 범례를 누르면 그 선 끄고 켜기</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- 수익률 추이 크게 보기 (보유코인 분석): 옮기기 · 크기 바꾸기, 간격 · 코인 · 비교는 화면과 함께 바뀜 -->
+                            <!-- 다른 코인 비교: 코인 고르기 (보고 있는 구간의 코인마다 수익률 · 내 보유 대비 · 최대 하락폭) -->
+                            <div class="modal fade" id="cmp-modal" tabindex="-1" aria-labelledby="cmp-title">
+                                <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+                                    <div class="modal-content">
+                                        <div class="modal-header">
+                                            <div><b id="cmp-title">다른 코인 비교 · 코인 고르기</b><div class="small text-muted" id="cmp-window"></div></div>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+                                        </div>
+                                        <div class="cmp-tools">
+                                            <div class="cmp-quick" role="group" aria-label="빠른 고르기">
+                                                <button type="button" class="btn btn-sm" data-cmp-quick="top5">구간 상위 5</button>
+                                                <button type="button" class="btn btn-sm" data-cmp-quick="bottom5">구간 하위 5</button>
+                                                <button type="button" class="btn btn-sm" data-cmp-quick="top10">대형 10개</button>
+                                                <button type="button" class="btn btn-sm" data-cmp-quick="value10">거래대금 상위 10</button>
+                                                <button type="button" class="btn btn-sm" data-cmp-quick="held">지금 보유 코인</button>
+                                                <button type="button" class="btn btn-sm cmp-clear" data-cmp-quick="clear">모두 지우기</button>
+                                            </div>
+                                            <input type="search" class="form-control form-control-sm" id="cmp-search" placeholder="코인 이름 · 기호 찾기" aria-label="코인 찾기">
+                                        </div>
+                                        <div class="cmp-progress d-none" id="cmp-progress"><span class="sta-progress"><i style="width:0%"></i></span><small></small></div>
+                                        <div class="modal-body p-0">
+                                            <table class="table table-sm cmp-table cmp-pick mb-0" id="cmp-table"></table>
+                                        </div>
+                                        <div class="modal-footer">
+                                            <small class="me-auto" id="cmp-count"></small>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+                                            <button type="button" class="btn btn-sm btn-primary" id="cmp-apply">적용</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="modal fade" id="pnl-big-modal" tabindex="-1" aria-labelledby="pnl-big-title">
+                                <div class="modal-dialog modal-xl modal-dialog-centered">
+                                    <div class="modal-content">
+                                        <div class="modal-header pnl-big-bar">
+                                            <b id="pnl-big-title">수익률 추이</b>
+                                            <div class="pnl-big-win ms-auto" role="group" aria-label="창 크기">
+                                                <button type="button" class="btn btn-sm" data-pnl-big-max title="전체 화면 (화면 가득)"><i class="bi bi-arrows-fullscreen"></i><span>전체 화면</span></button>
+                                                <button type="button" class="btn btn-sm" data-pnl-big-restore title="원래 크기로 가운데에 놓으며, 제목 줄을 두 번 눌러도 됩니다."><i class="bi bi-fullscreen-exit"></i><span>축소</span></button>
+                                            </div>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+                                        </div>
+                                        <div class="pnl-big-tools">
+                                            <div class="btn-group btn-group-sm" role="group" aria-label="점 간격" id="pnl-big-intervals"><button type="button" class="btn btn-outline-secondary" data-pnl-big-interval="1m">1분</button><button type="button" class="btn btn-outline-secondary" data-pnl-big-interval="10m">10분</button><button type="button" class="btn btn-outline-secondary" data-pnl-big-interval="15m">15분</button><button type="button" class="btn btn-outline-secondary" data-pnl-big-interval="30m">30분</button><button type="button" class="btn btn-outline-secondary" data-pnl-big-interval="1h">1시간</button><button type="button" class="btn btn-outline-secondary" data-pnl-big-interval="4h">4시간</button><button type="button" class="btn btn-outline-secondary" data-pnl-big-interval="1d">일</button><button type="button" class="btn btn-outline-secondary" data-pnl-big-interval="1w">주</button><button type="button" class="btn btn-outline-secondary" data-pnl-big-interval="1M">월</button><button type="button" class="btn btn-outline-secondary" data-pnl-big-interval="1y">년</button></div>
+                                            <select class="form-select form-select-sm w-auto" id="pnl-big-coin" aria-label="코인 선택"></select>
+                                            <select class="form-select form-select-sm w-auto" id="pnl-big-bench" aria-label="비교"></select>
+                                            <div class="dropdown pnl-coins-dd">
+                                                <button type="button" class="btn btn-sm pnl-coins-btn dropdown-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" id="pnl-big-coins-btn">코인 겹쳐 보기</button>
+                                                <div class="dropdown-menu p-0 pnl-coins-menu" id="pnl-big-coins-menu"></div>
+                                            </div>
+                                            <button type="button" class="btn btn-sm pnl-coins-btn pnl-align-btn" data-pnl-align aria-pressed="false" title="모든 선을 그래프 맨 왼쪽에서 0으로 맞춰, 그 뒤 오르고 내린 모양만 비교"><i class="bi bi-arrows-collapse"></i> 출발점 맞추기</button>
+                                        </div>
+                                        <div class="modal-body">
+                                            <div class="bd-pnl-legend d-none" id="pnl-big-legend" aria-live="polite"></div>
+                                            <div class="pnl-big-area">
+                                                <canvas id="pnl-big-chart" aria-label="수익률 추이 크게 보기" role="img"></canvas>
+                                                <div id="pnl-big-empty" class="position-absolute top-50 start-50 translate-middle text-center text-muted d-none"></div>
+                                            </div>
+                                            <small class="text-muted" id="pnl-big-info"></small>
+                                        </div>
+                                        <div class="tx-resize" title="끌어서 창 크기 바꾸기" aria-hidden="true"></div>
+                                    </div>
+                                </div>
+                            </div>
+    <!-- 내 조건 만들기: 문장 → AI → 조건 규칙 미리보기 → 저장 -->
+    <div class="modal fade" id="cond-make-modal" tabindex="-1" aria-labelledby="cond-make-title-h">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="cond-make-title-h"><i class="bi bi-stars me-2 text-primary"></i>내 조건 만들기</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning small d-none d-flex-when-shown align-items-center justify-content-between gap-2" id="cond-make-nokey">
+                        <span>설정 탭의 <b>AI 조건 도우미</b>에 AI API 키(Claude·OpenAI·Gemini 중 하나)를 먼저 넣어 주십시오.</span>
+                        <button type="button" class="btn btn-sm btn-warning text-nowrap fw-semibold" data-open-ai-settings>AI 조건 도우미로 가기 <i class="bi bi-arrow-right"></i></button>
+                    </div>
+                    <label class="form-label fw-semibold" for="cond-make-text">어떤 코인을 찾고 싶은지 문장으로 적어 주십시오</label>
+                    <textarea class="form-control mb-2" id="cond-make-text" rows="3" maxlength="500"
+                              placeholder="예) RSI가 30 이하이고 거래대금이 평소의 2배 넘게 늘어난 코인"></textarea>
+                    <div class="d-flex flex-wrap gap-1 mb-3 small">
+                        <span class="text-muted me-1">예시:</span>
+                        <button type="button" class="btn btn-sm btn-light border py-0" data-cond-example="RSI가 30 이하이고 거래대금이 평소의 2배 넘게 늘어난 코인">RSI 낮음 + 거래대금 급증</button>
+                        <button type="button" class="btn btn-sm btn-light border py-0" data-cond-example="6개월 최고가보다 60% 이상 떨어졌고 최근 3일 안에 5일선이 20일선을 위로 뚫은 코인">최고가 대비 하락 + 골든크로스</button>
+                        <button type="button" class="btn btn-sm btn-light border py-0" data-cond-example="내가 보유한 코인 중 오늘 5% 넘게 오른 코인">내 보유 중 오늘 급등</button>
+                    </div>
+                    <button type="button" class="btn btn-primary" id="cond-make-run"><i class="bi bi-magic me-1"></i> 조건으로 바꾸기</button>
+                    <div class="small text-danger mt-2" id="cond-make-error" role="alert"></div>
+                    <div class="mt-3" id="cond-make-result"></div>
+                    <div class="small text-muted mt-3"><i class="bi bi-info-circle me-1"></i>AI는 문장을 봇이 이해하는 조건으로 옮기기만 합니다. 조건에 맞는 코인을 보여줄 뿐 매매를 권하는 것이 아닙니다.</div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light border" data-bs-dismiss="modal">닫기</button>
+                    <button type="button" class="btn btn-success d-none" id="cond-make-save"><i class="bi bi-check-lg me-1"></i> 이 조건 저장</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="{{ url_for('static', filename='js/bot_dashboard.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/chart_lab.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/backtest_lab.js') }}"></script>
+</body>
+</html>

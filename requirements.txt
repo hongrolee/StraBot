@@ -1,0 +1,15 @@
+# StraBot 필수 패키지
+pystray==0.19.5
+Pillow>=10.4.0
+pyupbit==0.2.31
+pandas>=2.0.3
+numpy>=1.24.3
+pyinstaller>=6.0.0  # 빌드할 때만 필요 (build.bat)
+Flask==2.3.3
+Flask-SocketIO==5.3.6
+cryptography>=41.0.0  # 설정 암호화(Fernet) · 계정 권한표 서명 확인(Ed25519)
+requests>=2.31  # 업비트 시세 · 계정 서버(로그인·버전 확인)
+PyJWT>=2.8  # 업비트 개인 API 요청 서명
+pywin32>=306; sys_platform == "win32"
+
+websockets>=12  # 실시간 체결(1분 매수 급증) 수집용 (pyupbit와 함께 설치됨)
