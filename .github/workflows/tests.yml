@@ -42,9 +42,12 @@ jobs:
           shellcheck -S warning scripts/install.sh scripts/strabot
       - name: 설치 (이 저장소의 이 커밋으로)
         run: |
+          # 전용 사용자(strabot)가 읽을 수 있는 곳에 이 커밋을 bare 저장소로 복사해 두고 거기서 설치
           git checkout -q -B ci-install
-          sudo git config --global --add safe.directory '*'
-          sudo env STRABOT_REPO="file://$GITHUB_WORKSPACE" STRABOT_BRANCH=ci-install STRABOT_DASHBOARD_PASSWORD='ci-password-1' STRABOT_PORT=5001 bash scripts/install.sh
+          git clone -q --bare . /tmp/strabot-src.git
+          chmod -R a+rX /tmp/strabot-src.git
+          sudo git config --system --add safe.directory '*'
+          sudo env STRABOT_REPO=file:///tmp/strabot-src.git STRABOT_BRANCH=ci-install STRABOT_DASHBOARD_PASSWORD='ci-password-1' STRABOT_PORT=5001 bash scripts/install.sh
       - name: 서비스 · 로그인 확인
         run: |
           set -x
