@@ -111,7 +111,7 @@ User=$SVC_USER
 Group=$SVC_USER
 WorkingDirectory=$APP_DIR
 EnvironmentFile=$ENV_FILE
-Environment=STRABOT_SERVER=1
+Environment=STRABOT_SERVER_MODE=1
 Environment=STRABOT_DATA_DIR=$DATA_DIR
 Environment=PYTHONUNBUFFERED=1
 ExecStart=$APP_DIR/venv/bin/python $APP_DIR/main.py --server

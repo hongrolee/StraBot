@@ -1366,6 +1366,7 @@ PATTERN_IDS = ['hammer', 'bull_engulf', 'morning_star', 'three_white', 'shooting
 
 
 from bot_core import strategy_hongro2 as _hongro2  # noqa: E402
+from bot_core import strategy_zone as _zone  # noqa: E402
 
 
 def _t_held_days(c, p, d):
@@ -1446,6 +1447,12 @@ PRESETS: Dict[str, Dict] = {
     'below_ema_close': {'title': '종가가 지수이동평균 아래', 'params': {'days': 50, 'pct': 0}, 'test': _t_vs_ema(False), 'sort': ('s_gap_ma', 'asc')},
     'held_days': {'title': '산 지 N일 지남', 'params': {'days': 30}, 'test': _t_held_days, 'sort': ('s_held', 'desc')},
     'hongro2_sell': {'title': 'Hongro 전략2 팔기', 'params': {'tf': '4h'}, 'test': _hongro2.sell_test, 'sort': ('s_gain', 'desc')},
+    # 수요 구역 되돌림 한 쌍 (bot_core/strategy_zone.py, 2026-10-18) — lab zone_retest 검증(2022~, 245코인): 되돌아온 순간 사면 거래당 +0.5%,
+    # 체결이 0.5% 밀리면 0 · 코인당 1년 4번꼴. trend=1 은 영상의 '상승 추세에서만' (거래 수만 줄고 거래당 % 는 같았음)
+    'zone_buy': {'title': '수요 구역 되돌림 사기', 'params': {'tf': '1h', 'impulse': 3, 'quiet': 6, 'expire': 150, 'band': 0.5, 'rr': 2.5, 'trend': 0, 'k': 5},
+                 'test': _zone.buy_test, 'sort': ('s_rr', 'desc')},
+    'zone_sell': {'title': '수요 구역 목표 · 깨짐 팔기', 'params': {'tf': '1h', 'impulse': 3, 'quiet': 6, 'expire': 150, 'band': 0.5, 'trend': 0, 'k': 5},
+                  'test': _zone.sell_test, 'sort': ('s_gain', 'asc')},
     'buy_targets': {'title': '매매대상 코인 바로 사기', 'start_buy': True, 'params': {},
                     'test': _t_all_coins, 'sort': ('trade_value_24h', 'desc')},
     'value_top': {'title': '거래대금 상위', 'params': {'top': 20}, 'test': _t_value_top, 'sort': ('s_value_rank', 'asc')},
@@ -1648,7 +1655,7 @@ def resolve(cond_id: str, custom_conditions: List[Dict]) -> Optional[Dict]:
     return None
 
 
-TF_AWARE = {'volume_spike'}
+TF_AWARE = {'volume_spike', 'zone_sell'}      # zone_sell: 산 뒤로 끝난 봉 수를 봉 길이로 셈
 
 
 def run_condition(cond: Dict, params: Optional[Dict], coins: List[Dict], lows: Dict[str, Dict],

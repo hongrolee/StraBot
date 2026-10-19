@@ -33,8 +33,8 @@ if os.environ.get('STRABOT_DATA_DIR'):
     BASE_DIR.mkdir(parents=True, exist_ok=True)
 
 # 서버 모드 (리눅스 VPS 등, 2026-10-17): 트레이 아이콘 · 브라우저 자동 열기 없이, 바깥(0.0.0.0)에 열고 대시보드 비밀번호로 잠금
-#   켜기: STRABOT_SERVER=1 또는 `python main.py --server`. 데이터 폴더 기본값은 ~/.strabot (STRABOT_DATA_DIR 로 바꿀 수 있음)
-SERVER_MODE = os.environ.get('STRABOT_SERVER') == '1' or '--server' in sys.argv
+#   켜기: STRABOT_SERVER_MODE=1 또는 `python main.py --server` (STRABOT_SERVER 는 계정 서버 주소라 다른 이름, 2026-10-19). 데이터 폴더 기본값은 ~/.strabot (STRABOT_DATA_DIR 로 바꿀 수 있음)
+SERVER_MODE = os.environ.get('STRABOT_SERVER_MODE') == '1' or '--server' in sys.argv
 if SERVER_MODE and not os.environ.get('STRABOT_DATA_DIR') and not getattr(sys, 'frozen', False):
     BASE_DIR = Path.home() / '.strabot'
     BASE_DIR.mkdir(parents=True, exist_ok=True)

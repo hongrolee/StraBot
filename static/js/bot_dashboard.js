@@ -3111,7 +3111,7 @@ async function loadTradeHistory(force = false) {
             if (note) {
                 note.textContent = (t.notes || []).includes('NO_DEPOSIT_SCOPE')
                     ? 'ⓘ 입금·출금 내역은 업비트 Open API 키에 \'입출금 조회\' 권한을 켜야 보입니다. (업비트 > 마이페이지 > Open API 관리)'
-                    : '';
+                    : (t.notes || []).includes('BITHUMB_UNSUPPORTED') ? 'ⓘ 빗썸 입금·출금 내역은 아직 보여 드리지 않습니다. 빗썸 사이트에서 확인해 주십시오.' : '';
             }
         }
         // 매수·매도: 첫 쪽 (입금 · 출금만 볼 땐 받지 않음)
@@ -5587,6 +5587,38 @@ const SCREEN_PRESETS = [
         spark: ['day', 30, '30일'], sortKey: 's_gain', sortDir: 'desc',
         test() { return null; },
     },
+    // 수요 구역 되돌림 한 쌍 — 봇 규칙 전용 (계산은 서버 bot_core/strategy_zone.py, 2026-10-18)
+    {
+        id: 'zone_buy', title: '수요 구역 되돌림 사기', icon: 'bi-box-arrow-in-down', ruleOnly: true,
+        desc: (p) => '직전 ' + p.quiet + '봉이 ' + p.impulse + '% 폭 안에서 조용하다가 한 봉이 ' + p.impulse + '% 이상 치솟은 자리(치솟기 직전 봉의 저가~고가 = 수요 구역)로 가격이 되돌아오면 삽니다. 구역이 종가로 깨졌거나 ' + p.expire + '봉이 지나면 버리고, 치솟은 뒤 최고가까지의 거리가 구역 아랫선까지 거리의 ' + p.rr + '배 이상일 때만 삽니다' + (Number(p.trend) ? ' · 고점과 저점이 높아지는 상승 추세일 때만' : '') + '. 검증(2022~ 245코인 1시간봉)에서는 되돌아온 순간 바로 사야 거래당 +0.5%였고 체결이 0.5% 늦으면 우위가 없었습니다',
+        params: [
+            { key: 'impulse', label: '치솟음', unit: '% 이상', value: 3, min: 1, max: 30, step: 0.5 },
+            { key: 'quiet', label: '직전 조용한 봉', unit: '봉', value: 6, min: 2, max: 30 },
+            { key: 'expire', label: '구역 유효', unit: '봉', value: 150, min: 10, max: 199 },
+            { key: 'band', label: '윗선 여유', unit: '%', value: 0.5, min: 0, max: 5, step: 0.1 },
+            { key: 'rr', label: '손익비', unit: '배 이상', value: 2.5, min: 1, max: 10, step: 0.5 },
+            { key: 'trend', label: '상승 추세에서만', unit: '(1 = 예)', value: 0, min: 0, max: 1 },
+            { key: 'k', label: '흔들림 폭', unit: '봉', value: 5, min: 2, max: 20 },
+        ],
+        columns: [['s_rr', '손익비'], ['s_up', '목표까지 %'], ['s_down', '아랫선까지 %'], ['s_ago', '치솟은 지(봉)']],
+        spark: ['day', 30, '30일'], sortKey: 's_rr', sortDir: 'desc',
+        test() { return null; },
+    },
+    {
+        id: 'zone_sell', title: '수요 구역 목표 · 깨짐 팔기', icon: 'bi-box-arrow-down', ruleOnly: true,
+        desc: (p) => '봇이 산 코인이 목표(치솟은 뒤 최고가)에 닿으면 팔고, 산 값이 들어 있던 수요 구역의 아랫선 아래로 내려오면 팝니다' + (Number(p.trend) ? ' · 상승 추세가 꺾여도 팝니다' : '') + ' (큰 손절은 봇 안전장치로)',
+        params: [
+            { key: 'impulse', label: '치솟음', unit: '% 이상', value: 3, min: 1, max: 30, step: 0.5 },
+            { key: 'quiet', label: '직전 조용한 봉', unit: '봉', value: 6, min: 2, max: 30 },
+            { key: 'expire', label: '구역 유효', unit: '봉', value: 150, min: 10, max: 199 },
+            { key: 'band', label: '윗선 여유', unit: '%', value: 0.5, min: 0, max: 5, step: 0.1 },
+            { key: 'trend', label: '추세 꺾이면 팔기', unit: '(1 = 예)', value: 0, min: 0, max: 1 },
+            { key: 'k', label: '흔들림 폭', unit: '봉', value: 5, min: 2, max: 20 },
+        ],
+        columns: [['s_why', '판 이유'], ['s_target', '목표'], ['s_gain', '산 값 대비']],
+        spark: ['day', 30, '30일'], sortKey: 's_gain', sortDir: 'asc',
+        test() { return null; },
+    },
     {
         id: 'buy_targets', title: '매매대상 코인 바로 사기', icon: 'bi-cart-check', startBuy: true, botOnly: true,
         desc: () => '봇을 켤 때 매매대상에 맞는 코인을 거래 많은 순으로 바로 사고, 켠 뒤에도 돈이 생기면 아직 안 가진 매매대상 코인을 더 삽니다 (최대 보유 수까지 · 판 코인은 24시간 뒤부터)',
@@ -7883,10 +7915,15 @@ async function loadConfig() {
 let exchangeCfg = {};
 const EXCHANGE_KEYS = { upbit: ['api_key', 'api_secret'], bithumb: ['bithumb_api_key', 'bithumb_api_secret'] };
 const selectedExchange = () => (document.getElementById('exchange-select')?.value === 'bithumb' ? 'bithumb' : 'upbit');
+const KEY_KEEP = '••••••••';   // 서버가 저장된 키 대신 보내는 표시 (키 자체는 화면으로 오지 않음, 2026-10-19)
 function fillExchangeKeys() {
     const ex = selectedExchange(), [k, sct] = EXCHANGE_KEYS[ex];
-    document.getElementById('api-key').value = exchangeCfg[k] || '';
-    document.getElementById('api-secret').value = exchangeCfg[sct] || '';
+    const keyEl = document.getElementById('api-key'), sctEl = document.getElementById('api-secret');
+    keyEl.value = exchangeCfg[k] || '';
+    sctEl.value = exchangeCfg[sct] || '';
+    const saved = exchangeCfg[k] === KEY_KEEP;
+    keyEl.placeholder = saved ? '저장되어 있습니다 · 바꾸려면 새 키를 입력하십시오' : 'Access Key를 입력하십시오';
+    sctEl.placeholder = saved ? '저장되어 있습니다 · 바꾸려면 새 키를 입력하십시오' : 'Secret Key를 입력하십시오';
     lastSavedKeys = `${ex}\n${exchangeCfg[k] || ''}\n${exchangeCfg[sct] || ''}`;
     const title = document.getElementById('exchange-title');
     if (title) title.textContent = `${MODE_NAMES[ex]} 연결`;
@@ -12244,7 +12281,7 @@ function basisTagHtml(preset, p = null) {
 const TF_PRESETS = new Set(['rsi_low', 'rsi_high', 'rsi_cross_up', 'rsi_cross_down', 'golden_cross', 'dead_cross', 'new_high',
     'bb_lower', 'bb_upper', 'bb_lower_up', 'bb_upper_down', 'ma_cross_up', 'ma_cross_down', 'streak_up', 'streak_down', 'squeeze',
     'macd_cross_up', 'macd_cross_down', 'ma_aligned', 'aligned_pullback', 'stoch_up', 'disparity_low', 'disparity_high', 'above_ma_close', 'below_ma_close', 'above_ema_close', 'below_ema_close',
-    'squeeze_break', 'big_candle', 'quiet_rise', 'hongro2_buy', 'hongro2_sell',
+    'squeeze_break', 'big_candle', 'quiet_rise', 'hongro2_buy', 'hongro2_sell', 'zone_buy', 'zone_sell',
     'hammer', 'bull_engulf', 'morning_star', 'three_white', 'shooting_star', 'bear_engulf', 'evening_star', 'three_black',
     'double_bottom', 'double_top', 'triangle_break', 'bull_flag', 'cup_handle', 'rsi_div_up', 'rsi_div_down', 'value_breakout',
     'volume_spike']);
@@ -12803,6 +12840,7 @@ function botProfile(b) {
     let when = { ic: 'bi-check2-circle', t: '조건 맞으면', d: why };
     if (dca) { const w = every === 7 ? '매주' : every === 1 ? '매일' : every === 30 ? '매달' : `${every}일마다`; when = { ic: 'bi-calendar-week', t: w, d: `${w} 정해진 금액씩 삽니다` }; }
     else if (buy.includes('hongro2_buy')) when = { ic: 'bi-cpu', t: '전략 신호', d: why };
+    else if (buy.includes('zone_buy')) when = { ic: 'bi-box-arrow-in-down', t: '되돌아오면', d: '치솟기 전 자리(수요 구역)로 되돌아오면 삽니다' };
     else if (buy.some(i => PF_FALL.has(i))) when = { ic: 'bi-graph-down-arrow', t: '떨어지면', d: `떨어진 뒤 싸게 삽니다 (${why})` };
     else if (buy.some(i => PF_TURN.has(i))) when = { ic: 'bi-arrow-repeat', t: '반등하면', d: `떨어졌다 다시 오를 때 삽니다 (${why})` };
     else if (buy.some(i => PF_JUMP.has(i))) when = { ic: 'bi-lightning-charge', t: '급등하면', d: `갑자기 뛸 때 따라 삽니다 (${why})` };
@@ -12814,6 +12852,7 @@ function botProfile(b) {
     let sold = null;
     if (held) sold = { ic: 'bi-hourglass-split', t: `${held}일 뒤`, d: `산 지 ${held}일 지나면 팝니다` };
     else if (sell.includes('hongro2_sell')) sold = { ic: 'bi-cpu', t: '전략 신호', d: title('hongro2_sell') };
+    else if (sell.includes('zone_sell')) sold = { ic: 'bi-box-arrow-down', t: '목표 · 깨지면', d: '치솟은 뒤 최고가에 닿거나 산 자리(수요 구역) 아래로 내려오면 팝니다' };
     else if (sell.some(i => ['below_ma_close', 'below_ema_close', 'dead_cross', 'ma_cross_down', 'macd_cross_down'].includes(i))) sold = { ic: 'bi-arrow-down-right', t: '꺾이면', d: '오름세가 꺾이면 팝니다' };
     else if (sell.some(i => PF_JUMP.has(i))) sold = { ic: 'bi-lightning-charge', t: '급등 때', d: '급등하면 일부만 팝니다' };
     else if (sell.some(i => PF_RISE.has(i))) sold = { ic: 'bi-bullseye', t: '오르면', d: '많이 오르면 팝니다' };
@@ -13937,6 +13976,9 @@ const NEW_BOT_TEMPLATES = [
     { key: 'dip', title: '떨어진 코인 싸게 사기', desc: '거래 많은 큰 코인 중 많이 떨어진 코인을 사서, 다시 오르면 팝니다.', style: 'aggressive',
       spec: { trade_rules: { target: [{ id: 'value_top', params: { top: 50 } }], buy: [{ id: 'bb_lower', params: { days: 20, k: 2 } }], sell: [{ id: 'bb_upper', params: { days: 20, k: 2 } }] },
               risk_config: { position_size_percent: 10, max_positions: 10, stop_loss_percent: 15, take_profit_percent: 30, trailing_stop_percent: 0 } } },
+    { key: 'zone', title: '수요 구역 되돌림', desc: '거래 많은 코인 100개를 1시간봉으로 지켜보다가, 치솟기 전 자리로 되돌아오면 사고 치솟은 뒤 최고가에 닿거나 그 자리가 깨지면 팝니다 (손절 2 · 익절 6). 검증에서는 되돌아온 순간 바로 사야 거래당 +0.5%, 코인당 1년 4번꼴이었습니다.', style: 'aggressive',
+      spec: { trade_rules: { target: [{ id: 'value_top', params: { top: 100 } }], buy: [{ id: 'zone_buy', params: { tf: '1h', impulse: 3, quiet: 6, expire: 150, band: 0.5, rr: 2.5, trend: 0, k: 5 } }], sell: [{ id: 'zone_sell', params: { tf: '1h', impulse: 3, quiet: 6, expire: 150, band: 0.5, trend: 0, k: 5 } }] },
+              risk_config: { position_size_percent: 20, max_positions: 5, stop_loss_percent: 2, take_profit_percent: 6, trailing_stop_percent: 0 } } },
     { key: 'copy', title: '내 봇 복사해서 시작', desc: '지금 있는 봇의 규칙 · 안전장치를 그대로 가져와 새 봇으로 만듭니다.', style: '' },
     { key: 'blank', title: '빈 봇 · 직접 만들기', desc: '조건 없이 만들고, 만든 뒤 매매대상 · 매수 · 매도 조건을 직접 끌어 놓습니다.', style: '' },
 ];
@@ -15481,6 +15523,8 @@ const COND_EN = {
     hs_bottom: 'inverse head and shoulders bottom H&S',
     hongro2_buy: 'Hongro strategy',
     hongro2_sell: 'Hongro strategy',
+    zone_buy: 'demand zone retest supply pullback',
+    zone_sell: 'demand zone target break',
     held_days: 'holding period days',
 };
 function condSearchText(p) {
@@ -15513,7 +15557,7 @@ const COND_GROUPS = [
     { key: 'pat_ind', icon: '📊', title: '지표 패턴', tip: 'RSI · 거래대금을 함께 보는 모양이며, 눌러서 자세히 보실 수 있습니다.', sub: 'RSI · 거래대금이 함께 보는 모양 — 보장은 없습니다',
       ids: ['rsi_div_up', 'rsi_div_down', 'value_breakout'] },
     { key: 'strategy', icon: '🧠', title: '전략 (시험용)', tip: '여러 지표를 묶은 사고파는 규칙 한 쌍이며, 시뮬레이션에서 지켜보는 용도입니다.', sub: '여러 지표를 묶은 사고파는 한 쌍 — 시뮬레이션에서 지켜보기',
-      ids: ['hongro2_buy', 'hongro2_sell', 'held_days'] },
+      ids: ['hongro2_buy', 'hongro2_sell', 'zone_buy', 'zone_sell', 'held_days'] },
 ];
 const COND_OTHER_GROUP = { key: 'other', icon: '🧩', title: '그 밖의 조건', sub: '' };
 const COND_SET_GROUP = { key: 'set', icon: '🔁', title: '세트', tip: '사고파는 순서가 한 쌍으로 정해진 규칙이며, 눌러서 자세히 보실 수 있습니다.', sub: '사고파는 순서가 한 쌍으로 정해진 규칙' };

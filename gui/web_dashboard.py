@@ -57,6 +57,10 @@ if getattr(sys, 'frozen', False):
     os.environ['EVENTLET_NO_GREENDNS'] = 'yes'
 
 
+# 화면으로 내보내지 않는 설정 키 (/api/config GET 은 저장 여부만 KEY_KEEP 으로 알림, 2026-10-19)
+SECRET_FIELDS = ('api_key', 'api_secret', 'bithumb_api_key', 'bithumb_api_secret', 'llm_api_key')
+KEY_KEEP = '••••••••'
+
 class WebDashboard:
     """웹 기반 대시보드"""
 
@@ -250,6 +254,13 @@ class WebDashboard:
 
         logger.info(f"웹 대시보드 초기화: 포트 {port}")
 
+    def public_config(self) -> Dict:
+        """화면에 보내는 설정: 키 필드는 저장 여부만 (KEY_KEEP) — 서버 모드에서 평문 HTTP 로 키가 지나가지 않게 (2026-10-19)"""
+        out = dict(self.config)
+        for k in SECRET_FIELDS:
+            out[k] = KEY_KEEP if str(self.config.get(k) or '').strip() else ''
+        return out
+
     def _load_config(self) -> Dict:
         """설정 파일 로드 (암호화된 필드 자동 복호화 및 마이그레이션)"""
         default_config = {
@@ -374,15 +385,19 @@ class WebDashboard:
 
         @self.app.route('/api/config', methods=['GET', 'POST'])
         def config_api():
-            """설정 조회/저장"""
+            """설정 조회/저장 — 거래소 · LLM 키는 화면으로 내보내지 않는다 (2026-10-19)
+            조회: 저장된 키는 KEY_KEEP('••••••••'), 없으면 ''. 저장: KEY_KEEP 이 오면 그대로 두고, '' 이면 지우고, 다른 값이면 바꿈"""
             if request.method == 'GET':
-                return jsonify(self.config)
+                return jsonify(self.public_config())
 
             # POST: 설정 저장
             try:
                 new_config = request.get_json() or {}
                 new_config.pop('bots', None)          # 봇 목록은 /api/bots 로만
                 new_config.pop('app_mode', None)      # 모드는 /api/app-mode 로만 (저장 전에 빼야 함)
+                for k in SECRET_FIELDS:               # 가려서 보낸 키가 그대로 돌아오면 저장된 값을 지킨다
+                    if k in new_config and str(new_config[k] or '') == KEY_KEEP:
+                        new_config.pop(k)
                 # 봇의 매매 규칙 · 안전장치는 봇마다 /api/bots 로만 — 예전엔 키 저장 때 옛 전역 값이 첫 봇을 덮어씀
                 for k in ('trade_rules', 'risk_config'):
                     new_config.pop(k, None)
@@ -1013,6 +1028,10 @@ class WebDashboard:
                 saved_key, saved_secret = api_keys(ex, self.config)
                 api_key = (data.get('api_key', '') or saved_key).strip()
                 api_secret = (data.get('api_secret', '') or saved_secret).strip()
+                if api_key == KEY_KEEP:               # 화면의 가린 값 = 저장된 키로 시험
+                    api_key = saved_key.strip()
+                if api_secret == KEY_KEEP:
+                    api_secret = saved_secret.strip()
 
                 if not api_key or not api_secret:
                     return jsonify({'success': False, 'error': 'API 키와 Secret 키를 입력해 주십시오.'})
@@ -1364,9 +1383,11 @@ class WebDashboard:
 
         @self.app.route('/api/transfer-history', methods=['GET'])
         def get_transfer_history():
-            """업비트 입금·출금 내역 (최근 days일)"""
+            """입금·출금 내역 (최근 days일) — 업비트만. 빗썸은 입출금 조회 API 를 아직 붙이지 않아 빈 목록 + 안내 (2026-10-19)"""
             try:
                 days = max(1, min(int(request.args.get('days', 30)), 186))
+                if exchange_of(self.app_mode()) == 'bithumb':
+                    return jsonify({'success': True, 'rows': [], 'notes': ['BITHUMB_UNSUPPORTED']})
                 return jsonify({'success': True, **self._fetch_transfers(days)})
             except HoldingsUnavailable as e:
                 return jsonify({'success': False, 'error': str(e)})

@@ -48,7 +48,7 @@ python main.py
 | `STRABOT_DATA_DIR` | 설정 · 기록 폴더 (기본: Windows `%LOCALAPPDATA%\StraBot`, 소스 실행은 저장소 폴더) |
 | `STRABOT_PORT` | 화면 포트 (기본 5001) |
 | `STRABOT_LICENSE_ENFORCE=1` | 소스 실행에서도 설치 파일처럼 계정 로그인 잠금을 켬 (기본은 꺼짐) |
-| `STRABOT_SERVER=1` (또는 `--server`) | 서버 모드: 트레이 · 브라우저 없이, 바깥에 열고 대시보드 비밀번호로 잠금. 데이터 폴더 기본값은 `~/.strabot` |
+| `STRABOT_SERVER_MODE=1` (또는 `--server`) | 서버 모드: 트레이 · 브라우저 없이, 바깥에 열고 대시보드 비밀번호로 잠금. 데이터 폴더 기본값은 `~/.strabot` |
 | `STRABOT_HOST` | 서버 모드에서 묶을 주소 (기본 `0.0.0.0`, 프록시 뒤면 `127.0.0.1`) |
 | `STRABOT_DASHBOARD_PASSWORD` | 서버 모드 첫 실행 · `--set-password` 에서 비밀번호를 묻지 않고 이 값으로 |
 | `STRABOT_HTTPS=1` | https 프록시 뒤에서 로그인 쿠키를 Secure 로 |
@@ -83,7 +83,7 @@ curl -fsSL https://strabot.mayai.kr/install.sh | sudo bash
 
 ```bash
 python main.py --set-password        # 대시보드 비밀번호 정하기 (한 번)
-STRABOT_SERVER=1 STRABOT_PORT=5001 python main.py --server
+STRABOT_SERVER_MODE=1 STRABOT_PORT=5001 python main.py --server
 ```
 
 ## 계정과 실제 주문
