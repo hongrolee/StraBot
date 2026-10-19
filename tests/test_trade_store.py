@@ -42,8 +42,9 @@ def test_fills_page_newest_first_with_cursor_and_total(tmp_path):
 
 def test_same_fill_is_not_added_twice(tmp_path):
     st = TradeStore(tmp_path / 't.db')
-    st.add_fills([fill(1), fill(2)])
-    assert st.add_fills([fill(1), fill(2), fill(3)]) == 1
+    f1, f2, f3 = fill(1), fill(2), fill(3)        # 한 번만 만듦 — 다시 만들면 그 사이 초가 바뀌어 시각이 달라질 수 있음 (CI 에서 가끔 실패, 2026-10-19)
+    st.add_fills([f1, f2])
+    assert st.add_fills([f1, f2, f3]) == 1
     assert st.count_fills() == 3
 
 
