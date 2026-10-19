@@ -121,7 +121,7 @@ def dash(tmp_path, monkeypatch):
     monkeypatch.setattr(d, '_account', lambda mode=None: d.sim_account if (mode or d.app_mode()) == 'sim' else d.fake)
     monkeypatch.setattr(d, '_sim_price', lambda m: 100_000.0)
     monkeypatch.setattr(pyupbit, 'get_tickers', lambda fiat='KRW', **k: ['KRW-BTC'])
-    monkeypatch.setattr(co, 'tick_size', lambda m, p: 100)
+    monkeypatch.setattr(co, 'tick_size', lambda m, p, *a: 100)
     placed, cancelled = [], []
     monkeypatch.setattr(co, 'upbit_place_limit', lambda a, m, s, p, v: placed.append((m, s, p, v)) or {
         'uuid': 'u-1', 'market': m, 'side': s, 'ord_type': 'limit', 'price': str(p), 'volume': str(v), 'remaining_volume': str(v)})
@@ -225,3 +225,22 @@ def test_api_resolve_hold(dash):
     assert c.post(f"/api/chart-orders/{o2['id']}/resolve", json={'action': 'cancel'}).get_json()['success']
     assert store.get(o2['id'])['state'] == 'cancel'
     assert c.post(f"/api/chart-orders/{o2['id']}/resolve", json={'action': 'run'}).status_code == 404
+
+
+def test_api_bithumb_krw_check_uses_bithumb_fee(dash, monkeypatch):
+    """빗썸 모드 예약 매수: 원화 확인은 빗썸 수수료(설정 0.25%)로 — 전에는 업비트 0.05% 고정 (2026-10-19)"""
+    dash.config['app_mode'] = 'bithumb'
+    dash.config['bithumb_fee_pct'] = 0.25
+    monkeypatch.setattr(dash, '_mode_price', lambda m, mode=None: 100_000.0)
+    monkeypatch.setattr(dash, '_krw_market_set', lambda mode=None: {'KRW-BTC'})
+    dash.fake.krw = 100_200                       # 100,000원 + 0.05% 는 되지만 + 0.25% 는 모자람
+    r = dash.client.post('/api/chart-orders', json={'market': 'BTC', 'side': 'bid', 'price': 90_000, 'krw': 100_000})
+    assert r.status_code == 400 and '0.25%' in r.get_json()['error']
+    dash.fake.krw = 100_300
+    assert dash.client.post('/api/chart-orders', json={'market': 'BTC', 'side': 'bid', 'price': 90_000, 'krw': 100_000}).get_json()['success']
+
+
+def test_tick_size_skips_upbit_for_other_exchange(monkeypatch):
+    import requests
+    monkeypatch.setattr(requests, 'get', lambda *a, **k: (_ for _ in ()).throw(AssertionError('업비트에 묻지 않아야 함')))
+    assert co.tick_size('KRW-XYZ', 1234.0, 'bithumb') == co.table_tick(1234.0)

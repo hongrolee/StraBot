@@ -21,6 +21,9 @@ const APP_MODE = ['sim', 'bithumb'].includes(document.body.dataset.appMode) ? do
 const IS_SIM = APP_MODE === 'sim';
 const MODE_NAMES = { upbit: '업비트', bithumb: '빗썸', sim: '시뮬레이션' };
 const EX_NAME = document.body.dataset.exName || (APP_MODE === 'bithumb' ? '빗썸' : '업비트');     // 이 모드의 거래소 (시뮬레이션은 업비트 시세)
+const IS_BITHUMB = APP_MODE === 'bithumb';
+const EX_DAY_START = document.body.dataset.exDayStart ? Number(document.body.dataset.exDayStart) : (IS_BITHUMB ? 0 : 9);   // 일봉이 바뀌는 시각 (업비트 9시 · 빗썸 0시)
+const EX_DAY_TEXT = EX_DAY_START === 0 ? '자정' : `오전 ${EX_DAY_START}시`;
 const OTHER_MODES = ['upbit', 'bithumb', 'sim'].filter(m => m !== APP_MODE);
 // 다른 모드 둘 중 하나 고르기 (확인 창 두 단추) → 고른 모드 · 그만두면 null
 async function pickOtherMode(title, modes, message = '') {
@@ -2291,7 +2294,7 @@ function drawCmpBot(res) {
     (res.skipped || []).forEach(s => notes.push(`빠진 규칙 · ${escapeHtml(s.title || '')}: ${escapeHtml(s.why || '')}`));
     (res.notes || []).filter(n => n.title !== '매매대상').forEach(n => notes.push(`${escapeHtml(n.title || '')}: ${escapeHtml(n.note || '')}`));
     (res.failed || []).forEach(f => notes.push(`${escapeHtml(f.c)}는 계산하지 못했습니다 (${escapeHtml(f.why)})`));
-    notes.push('수수료 0.05% · 미끄러짐 0.1%를 넣어 계산했으며, 봇이 다 판 뒤 다시 살 때는 판 돈 전부로 삽니다.');
+    notes.push(`수수료 ${FEE_PCT}% · 미끄러짐 0.1%를 넣어 계산했으며, 봇이 다 판 뒤 다시 살 때는 판 돈 전부로 삽니다.`);
     document.getElementById('cmpbot-notes').innerHTML = notes.map(n => `<div>· ${n}</div>`).join('');
 }
 
@@ -2590,6 +2593,7 @@ function setupTooltips() {
 
 // ── 보유 현황 매도: 확인 창에서 비율/수량을 고르고 시장가로 판다 (실제 업비트 계좌) ──
 const UPBIT_FEE = Number(document.body.dataset.exFee) || 0.0005;       // 이 모드 거래소 수수료 (업비트 0.05% · 빗썸은 설정 값)
+const FEE_PCT = +(UPBIT_FEE * 100).toFixed(3);                         // 화면 글자용 (0.05 · 0.25 …)
 const MIN_ORDER_KRW = 5000;     // 업비트 최소 주문금액
 let sellTarget = null;          // 확인 창에 띄운 코인
 let sellRatio = null;           // 비율 버튼으로 고른 값 (1이면 전량 → 서버가 실제 잔고 전부)
@@ -3015,7 +3019,7 @@ function renderTradeBotTags() {
     const tag = (id, label, color = '', tip = '') => `<button type="button" class="tb-tag${tradeBot === id ? ' active' : ''}" data-trade-bot="${escapeHtml(id)}"${color ? ` style="--c:${color}"` : ''}${tip ? ` title="${escapeHtml(tip)}"` : ''} aria-pressed="${tradeBot === id}">${color ? '<i class="tb-dot"></i>' : ''}${escapeHtml(label)}</button>`;
     box.innerHTML = tag('ALL', '전체')
         + bots.map(b => tag(b.id, b.name || '봇', botColorByName(b.name), `${b.name} 이 사고판 것만`)).join('')
-        + tag('none', '직접 주문', '', '봇 기록에 없는 주문 (업비트 앱이나 이 화면에서 직접 사고판 것 등)');
+        + tag('none', '직접 주문', '', `봇 기록에 없는 주문 (${EX_NAME} 앱이나 이 화면에서 직접 사고판 것 등)`);
 }
 
 // 2026.09.25 04:32 (KST)
@@ -3110,8 +3114,8 @@ async function loadTradeHistory(force = false) {
             transfersLoadedDays = tradeDays;
             if (note) {
                 note.textContent = (t.notes || []).includes('NO_DEPOSIT_SCOPE')
-                    ? 'ⓘ 입금·출금 내역은 업비트 Open API 키에 \'입출금 조회\' 권한을 켜야 보입니다. (업비트 > 마이페이지 > Open API 관리)'
-                    : (t.notes || []).includes('BITHUMB_UNSUPPORTED') ? 'ⓘ 빗썸 입금·출금 내역은 아직 보여 드리지 않습니다. 빗썸 사이트에서 확인해 주십시오.' : '';
+                    ? `ⓘ 입금·출금 내역은 ${EX_NAME} API 키에 '입출금 조회' 권한을 켜야 보입니다. (${IS_BITHUMB ? '빗썸 > 마이페이지 > API 관리' : '업비트 > 마이페이지 > Open API 관리'})`
+                    : '';
             }
         }
         // 매수·매도: 첫 쪽 (입금 · 출금만 볼 땐 받지 않음)
@@ -3196,7 +3200,7 @@ function botColorByName(name) {
 function tradeReasonHtml(r) {
     if (r.kind !== '매수' && r.kind !== '매도') return '<span class="text-muted">-</span>';
     if (!r.reason && !r.bot && !tradeReasonsOn) return '<span class="tx-manual" title="StraBot을 껐다 켜면 어느 봇이 어떤 조건으로 사고팔았는지 보입니다">껐다 켜면 보입니다</span>';
-    if (!r.reason && !r.bot) return '<span class="tx-manual" title="봇 기록에 없는 주문입니다 (업비트 앱이나 이 화면에서 직접 사고판 것 등)">직접 주문</span>';
+    if (!r.reason && !r.bot) return `<span class="tx-manual" title="봇 기록에 없는 주문입니다 (${EX_NAME} 앱이나 이 화면에서 직접 사고판 것 등)">직접 주문</span>`;
     const tip = [r.bot && `봇: ${r.bot}`, r.reason && `${r.kind} 이유: ${r.reason}`, r.kind === '매도' && r.buy_reason && `산 이유: ${r.buy_reason}`]
         .filter(Boolean).join('\n');
     return `<div class="tx-why" title="${escapeHtml(tip)}">${r.bot ? `<span class="tx-bot" style="--c:${botColorByName(r.bot)}">${escapeHtml(r.bot)}</span>` : ''}<span class="tx-why-t">${escapeHtml(r.reason || '-')}</span></div>`;
@@ -4133,7 +4137,7 @@ function updateBatchSell() {
         pnlCell.className = `text-end b-pnl ${tooSmall ? '' : pnlClass(pnl)}`;
         pnlCell.textContent = tooSmall ? '-' : `${pnl > 0 ? '+' : ''}${formatKrw(pnl)}`;
     }
-    document.getElementById('batch-total').innerHTML = `<span>합계 (${valid}개, 수수료 0.05% 제외)</span><span>${formatKrw(sum)} <small class="${pnlClass(pnlSum)}">(${pnlSum > 0 ? '+' : ''}${formatKrw(pnlSum)})</small></span>`;
+    document.getElementById('batch-total').innerHTML = `<span>합계 (${valid}개, 수수료 ${FEE_PCT}% 제외)</span><span>${formatKrw(sum)} <small class="${pnlClass(pnlSum)}">(${pnlSum > 0 ? '+' : ''}${formatKrw(pnlSum)})</small></span>`;
     const problem = valid ? '' : '최소 주문금액(5,000원) 이상인 코인이 없습니다.';
     document.getElementById('batch-hint').textContent = s.done ? '' : problem;
     document.getElementById('batch-confirm').disabled = !!problem || s.done;
@@ -4959,7 +4963,7 @@ const SCREEN_PRESETS = [
     },
     {
         id: 'surge_24h', title: '하루 급등 (24시간 크게 오른 뒤)', icon: 'bi-graph-up-arrow',
-        desc: (p) => `지금 가격이 24시간 전보다 +${p.rise_24h}% 이상 오른 코인 (업비트 1시간봉으로 24시간 전 가격을 봅니다). 매도 칸에 넣으면 '꺾이면 일부 팔고 다시 사기'를 고를 수 있습니다`,
+        desc: (p) => `지금 가격이 24시간 전보다 +${p.rise_24h}% 이상 오른 코인 (${EX_NAME} 1시간봉으로 24시간 전 가격을 봅니다). 매도 칸에 넣으면 '꺾이면 일부 팔고 다시 사기'를 고를 수 있습니다`,
         params: [{ key: 'rise_24h', label: '24시간 전보다', unit: '% 이상 상승', value: 20, min: 1, step: 1 }],
         columns: [['s_close_24h', '24시간 전 가격'], ['s_rise_24h', '24시간 상승']],
         spark: ['hour', 24, '24시간'], sortKey: 's_rise_24h', sortDir: 'desc',
@@ -4972,7 +4976,7 @@ const SCREEN_PRESETS = [
     },
     {
         id: 'all_coins', title: '모든 코인', icon: 'bi-grid-3x3-gap', startBuy: true,
-        desc: () => '거르지 않고 업비트 원화 시장의 모든 코인 (스테이블코인·유의 종목·상장폐지 예정은 봇이 사지 않습니다)',
+        desc: () => `거르지 않고 ${EX_NAME} 원화 시장의 모든 코인 (스테이블코인·유의 종목·상장폐지 예정은 봇이 사지 않습니다)`,
         params: [],
         columns: [],
         spark: ['day', 30, '30일'], sortKey: 'trade_value_24h', sortDir: 'desc',
@@ -9858,11 +9862,11 @@ function szChartClick(st, point, raw) {
     box.querySelector('[data-soc-go]').focus();
     box.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); box.remove(); } });
 }
-// 지금 팔면: 받을 돈(수수료 0.05% 뺌) · 수익률(매수평균가 대비, 사고팔 때 수수료 포함) — 매수평균가를 모르면 수익률 없음
+// 지금 팔면: 받을 돈(이 모드 거래소 수수료 뺌) · 수익률(매수평균가 대비, 사고팔 때 수수료 포함) — 매수평균가를 모르면 수익률 없음
 function szSellEstimate(st, qty) {
     const price = Number(st.lastPrice || st.data?.at(-1)?.close) || 0, avg = Number(st.avgBuy) || 0;
-    const krw = qty * price * (1 - 0.0005);
-    const rate = avg > 0 && price > 0 ? (price * (1 - 0.0005) / (avg * (1 + 0.0005)) - 1) * 100 : null;
+    const krw = qty * price * (1 - UPBIT_FEE);
+    const rate = avg > 0 && price > 0 ? (price * (1 - UPBIT_FEE) / (avg * (1 + UPBIT_FEE)) - 1) * 100 : null;
     return { krw, rate };
 }
 // 패널의 '시장가로 바로': 정해 둔 금액(매수) · 가진 수량의 %(매도)로 지금 바로 (업비트는 확인 창, 시뮬레이션은 바로)
@@ -10558,6 +10562,7 @@ function applyTradeFlow(list) {
 }
 
 function flowCellHtml(c) {
+    if (IS_BITHUMB) return '<td class="text-end text-muted" title="빗썸 모드에는 실시간 체결 정보가 없습니다">-</td>';
     if (!tradeFlow) return '<td class="text-end text-muted">…</td>';
     if (!c.flow_buy) return '<td class="text-end text-muted">-</td>';
     const mult = c.flow_mult;
@@ -10589,6 +10594,12 @@ async function pollTradeFlow() {
 
 function renderFlowStatus() {
     const el = document.getElementById('flow-status');
+    if (el && IS_BITHUMB) {                    // 빗썸: 실시간 체결 연결이 없음 (업비트 체결을 빗썸 코인에 섞지 않음, 2026-10-19)
+        el.classList.add('is-off');
+        el.title = '실시간 체결(1분 매수 급증 · 순간 급등)은 업비트에서만 모읍니다. 빗썸 모드에서는 이 값을 쓰는 조건이 맞지 않습니다.';
+        el.innerHTML = '<span class="flow-dot"></span>실시간 체결 없음 (빗썸 모드)';
+        return;
+    }
     if (!el || !tradeFlow) return;
     el.classList.toggle('is-off', !tradeFlow.connected);
     el.innerHTML = tradeFlow.connected
@@ -10598,8 +10609,8 @@ function renderFlowStatus() {
 
 
 function setupTradeFlow() {
-    pollTradeFlow();
-    setInterval(pollTradeFlow, 15000);
+    if (IS_BITHUMB) renderFlowStatus();
+    else { pollTradeFlow(); setInterval(pollTradeFlow, 15000); }
     setupConditionAlerts();
 }
 
@@ -11765,7 +11776,7 @@ function renderRiskPane() {
     const won = (n) => `${Math.round(n).toLocaleString('ko-KR')}원`;
     const sl = Math.max(0, val('stop-loss')), tp = Math.max(0, val('take-profit')), trail = Math.max(0, val('trailing-stop'));
     const chip = document.getElementById('risk-mode-chip');
-    if (chip) { chip.className = `rules-mode-chip ${IS_SIM ? 'is-sim' : 'is-upbit'}`; chip.innerHTML = IS_SIM ? '<i class="bi bi-controller"></i> 시뮬레이션' : '<i class="bi bi-bank"></i> 업비트(실제 돈)'; }
+    if (chip) { chip.className = `rules-mode-chip ${IS_SIM ? 'is-sim' : 'is-upbit'}`; chip.innerHTML = IS_SIM ? '<i class="bi bi-controller"></i> 시뮬레이션' : `<i class="bi bi-bank"></i> ${EX_NAME}(실제 돈)`; }
     const nowVals = { sl, tp, trail, size: val('position-size'), maxPos: val('max-positions'), daily: val('daily-loss-limit') };
     let presetOn = false;
     document.querySelectorAll('[data-risk-preset]').forEach(b => {
@@ -12228,21 +12239,29 @@ function botRulesSummaryHtml() {
             '안 꺾이면 팔지 않습니다 · 72시간 안에 안 오면 그때 가격에'));
     }
 
+    if (IS_BITHUMB) {                          // 빗썸 모드: 실시간 체결이 없어 안 되는 것 (2026-10-19)
+        const liveTitles = [...ruleList('buy'), ...ruleList('sell').filter(r => !isPartialSet(r))]
+            .filter(r => PRESET_BASIS[r.id] === 'live').map(r => SCREEN_PRESETS.find(p => p.id === r.id)?.title).filter(Boolean);
+        if (liveTitles.length) buyItems.push(item('빗썸 모드', `<span class="rs-warn">${liveTitles.map(esc).join(' · ')} 조건은 빗썸 모드에서 맞지 않습니다</span>`,
+            '실시간 체결(1분 거래대금)은 업비트에서만 모읍니다'));
+        if (anySet) sellItems.push(item('빗썸 모드', '<span class="rs-warn">급등 세트는 빗썸 모드에서 동작하지 않습니다</span>',
+            '실시간 체결 정보가 없어 급등 뒤 꺾임을 지켜보지 못합니다 · 업비트 · 시뮬레이션 모드에서만 팔고 다시 삽니다'));
+    }
     return `<div class="rs-title"><i class="bi bi-robot me-1"></i>봇이 할 일</div>`
         + `<div class="rs-grid">${sec('is-buy', 'bi-cart-plus', '사기', buyItems)}${sec('is-sell', 'bi-cash-coin', '팔기', sellItems)}</div>`;
 }
 
 // ── 조건이 어떤 봉(자료)으로 판단하는지: 일봉 · 주봉 · 오늘 · 실시간 ──
 const COND_BASIS = {
-    day: ['일봉', '업비트 일봉(오전 9시에 새 봉) + 지금 가격으로 계산합니다'],
-    week: ['주봉', '업비트 주봉(최근 최대 2년) + 지금 가격으로 계산합니다'],
+    day: ['일봉', `${EX_NAME} 일봉(${EX_DAY_TEXT}에 새 봉) + 지금 가격으로 계산합니다`],
+    week: ['주봉', `${EX_NAME} 주봉(최근 최대 2년) + 지금 가격으로 계산합니다`],
     today: ['오늘', '오늘 하루 움직임(어제 종가·오늘 저점)과 지금 가격으로 계산합니다'],
-    live: ['실시간', '업비트 실시간 체결을 1분 단위로 모아 계산합니다'],
-    hour: ['24시간', '업비트 1시간봉(최근 24시간) + 지금 가격으로 계산합니다'],
-    rank: ['24시간', '업비트 원화 마켓 전체의 24시간 거래대금 순위로 계산합니다'],
-    info: ['상장일', '업비트에 처음 일봉이 생긴 날(상장일)로 계산합니다'],
+    live: ['실시간', `업비트 실시간 체결을 1분 단위로 모아 계산합니다${IS_BITHUMB ? ' — 빗썸 모드에는 실시간 체결 정보가 없어 이 조건은 맞지 않습니다' : ''}`],
+    hour: ['24시간', `${EX_NAME} 1시간봉(최근 24시간) + 지금 가격으로 계산합니다`],
+    rank: ['24시간', `${EX_NAME} 원화 마켓 전체의 24시간 거래대금 순위로 계산합니다`],
+    info: ['상장일', `업비트에 처음 일봉이 생긴 날(상장일)로 계산합니다${IS_BITHUMB ? ' (빗썸에만 있는 코인은 상장일을 모릅니다)' : ''}`],
     trait: ['성격', '24시간 거래대금 · 상장일 · 지금 가격 · 바이낸스 상장 여부로 정하며, 봉 단위는 바꿀 수 없습니다'],
-    value24: ['24시간', '업비트 24시간 거래대금으로 정합니다'],
+    value24: ['24시간', `${EX_NAME} 24시간 거래대금으로 정합니다`],
     now: ['지금 가격', '지금 가격으로 정합니다'],
     binance: ['바이낸스', '바이낸스 상장 여부(하루 한 번 확인)로 정합니다'],
     hold: ['내 계좌', '지금 이 계좌의 보유 코인으로 정합니다 (봇은 확인할 때마다 잔고를 다시 읽습니다)'],
@@ -12272,7 +12291,7 @@ function basisLabel(preset, p = null) {
 }
 function basisTagHtml(preset, p = null) {
     const tf = TF_PRESETS.has(preset.id) ? tfOf(p) : 'day';
-    if (tf !== 'day') return `<span class="basis-tag basis-tf" title="업비트 ${TF_LABEL[tf]}(${TF_EVERY[tf]} 새 봉) + 지금 가격으로 계산합니다">${TF_LABEL[tf]}</span>`;
+    if (tf !== 'day') return `<span class="basis-tag basis-tf" title="${EX_NAME} ${TF_LABEL[tf]}(${TF_EVERY[tf]} 새 봉) + 지금 가격으로 계산합니다">${TF_LABEL[tf]}</span>`;
     const b = COND_BASIS[PRESET_BASIS[preset.id]];
     return b ? `<span class="basis-tag basis-${PRESET_BASIS[preset.id]}" title="${b[1]}">${b[0]}</span>` : '';
 }
@@ -12827,7 +12846,7 @@ function botProfile(b) {
     // 무엇을 (그림 · 짧은 말 · 자세한 말)
     const pick = (dca?.coin ? [dca.coin] : null) || rule('target', 'pick_coins')?.params?.coins || tr.only || [];
     const coins = pick.map(x => String(x).toUpperCase().replace('KRW-', ''));
-    let what = { ic: 'bi-globe2', t: '모든 코인', d: '업비트의 모든 원화 코인' };
+    let what = { ic: 'bi-globe2', t: '모든 코인', d: `${EX_NAME}의 모든 원화 코인` };
     if (coins.length === 1) what = { ic: coins[0] === 'BTC' ? 'bi-currency-bitcoin' : 'bi-coin', t: COIN_KO[coins[0]] || coins[0], d: `${COIN_KO[coins[0]] || coins[0]} 한 코인만` };
     else if (coins.length) what = { ic: 'bi-collection', t: `코인 ${coins.length}개`, d: `고른 코인: ${coins.map(x => COIN_KO[x] || x).join(', ')}` };
     else if (tgt.includes('value_top')) { const n = rule('target', 'value_top')?.params?.top || ''; what = { ic: 'bi-bank', t: `큰 코인 ${n}`, d: `거래가 많은 큰 코인 ${n}개 중에서` }; }
@@ -14849,7 +14868,7 @@ const COND_EXPLAIN = {
         cxLine([[16, 110], [60, 104], [110, 96], [160, 86], [210, 76], [260, 68], [290, 62], [300, 30]]) + cxDot(300, 30, CX.up) +
         cxText(150, 74, `1시간 동안 +${p.rise_1h}%↑`, CX.ink) + cxText(300, 20, `1분 +${p.rise}%↑`, CX.up) +
         cxBars([6, 7, 5, 8, 6, 7, 6, 8, 7, 6, 7, 6], 142, '#cbd5e1', 12, 10, 22) + `<rect x="${22 + 12 * 22}" y="${142 - 30}" width="12" height="30" rx="2" fill="${CX.warm}"/>` + cxText(250, 118, `거래 ×${p.mult}`, '#b45309')) },
-    surge_24h: { summary: '하루(24시간) 사이에 가격이 크게 오른 코인입니다. 24시간 전 가격은 업비트 1시간봉으로 봅니다.', sketch: (p) => cxSvg(
+    surge_24h: { summary: `하루(24시간) 사이에 가격이 크게 오른 코인입니다. 24시간 전 가격은 ${EX_NAME} 1시간봉으로 봅니다.`, sketch: (p) => cxSvg(
         cxH(112, CX.mute, '24시간 전 가격', 150) + cxLine([[16, 112], [60, 110], [100, 104], [140, 96], [180, 80], [220, 64], [260, 50], [300, 40], [334, 34]]) + cxDot(16, 112, CX.mute) + cxDot(334, 34, CX.up) +
         `<line x1="318" y1="108" x2="318" y2="44" stroke="${CX.warm}" stroke-width="2" marker-end="url(#cxs)"/><defs><marker id="cxs" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="${CX.warm}"/></marker></defs>` +
         cxText(308, 84, `+${p.rise_24h}%↑`, '#b45309', 'end') + cxText(180, 140, '← 24시간 →', CX.mute)) },

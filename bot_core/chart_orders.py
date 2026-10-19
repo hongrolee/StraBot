@@ -64,8 +64,11 @@ def table_tick(price: float) -> float:
 _tick_cache: Dict[str, tuple] = {}
 
 
-def tick_size(market: str, price: float) -> float:
-    """업비트가 알려 주는 그 코인의 호가 단위 (10분 기억). 못 받으면 기준표"""
+def tick_size(market: str, price: float, ex: str = 'upbit') -> float:
+    """업비트가 알려 주는 그 코인의 호가 단위 (10분 기억). 못 받으면 기준표
+    다른 거래소(빗썸)는 업비트에 묻지 않고 기준표로 — 차트 주문은 모두 '예약'(지금 가격과 견줘 시장가로 냄)이라 가격 맞춤에만 씀 (2026-10-19)"""
+    if ex != 'upbit':
+        return table_tick(price)
     hit = _tick_cache.get(market)
     if hit and time.time() - hit[0] < 600 and hit[2] == table_tick(price):
         return hit[1]

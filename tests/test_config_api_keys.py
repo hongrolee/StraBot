@@ -58,9 +58,63 @@ def test_connection_test_uses_saved_key_when_masked(tmp_path, monkeypatch):
     assert r.get_json()['success'] and seen == {'key': 'BK', 'secret': 'BS'}   # 가린 값은 저장된 키로 바꿔 시험
 
 
-def test_bithumb_mode_transfers_not_supported_yet(tmp_path):
+class FakeBithumb:
+    """빗썸 계좌 대신: _send(GET, 경로, 쿼리) → 첫 쪽에만 미리 넣은 줄"""
+
+    def __init__(self, pages=None, scope=True):
+        self.pages, self.scope, self.calls = pages or {}, scope, []
+
+    def _send(self, method, path, params):
+        from bot_core.exchanges import BithumbRequestError
+        self.calls.append((method, path, dict(params)))
+        if not self.scope:
+            raise BithumbRequestError(401, 'out_of_scope', '권한 없음')
+        return self.pages.get(path, []) if params.get('page') == 1 else []
+
+
+def test_bithumb_transfers_use_bithumb_api(tmp_path, monkeypatch):
+    """빗썸 모드 입출금: 코인 입금 · 원화 입금 · 코인 출금 · 원화 출금 네 목록을 빗썸에서 (전에는 업비트 것을 보여 줬음, 2026-10-19)"""
+    from datetime import datetime, timedelta, timezone
     wd = _wd(tmp_path)
     wd.config['app_mode'] = 'bithumb'
+    now = datetime.now(timezone(timedelta(hours=9)))
+    recent = (now - timedelta(days=1)).isoformat(timespec='seconds')
+    naive = (now - timedelta(days=2)).replace(tzinfo=None).isoformat(timespec='seconds')      # 시간대 없는 값도 한국 시각으로
+    old = (now - timedelta(days=40)).isoformat(timespec='seconds')
+    fake = FakeBithumb({
+        '/v1/deposits/krw': [{'currency': 'KRW', 'amount': '100000', 'fee': '0', 'state': 'ACCEPTED', 'done_at': recent}],
+        '/v1/deposits': [{'currency': 'BTC', 'amount': '0.01', 'fee': '0', 'state': 'DEPOSIT_ACCEPTED', 'done_at': naive},
+                         {'currency': 'ETH', 'amount': '1', 'fee': '0', 'state': 'DEPOSIT_ACCEPTED', 'done_at': old}],
+        '/v1/withdraws': [{'currency': 'BTC', 'amount': '0.005', 'fee': '0.0005', 'state': 'DONE', 'done_at': recent}],
+        '/v1/withdraws/krw': [{'currency': 'KRW', 'amount': '50000', 'fee': '1000', 'state': 'DONE', 'done_at': recent}],
+    })
+    monkeypatch.setattr(wd, '_account', lambda mode=None: fake)
+    body = wd.app.test_client().get('/api/transfer-history?days=7', environ_base=HERE).get_json()
+    assert body['success'] and body['notes'] == []
+    assert {path for _, path, _ in fake.calls} == {'/v1/deposits', '/v1/deposits/krw', '/v1/withdraws', '/v1/withdraws/krw'}
+    rows = body['rows']
+    assert len(rows) == 4 and 'ETH' not in {r['currency'] for r in rows}                    # 40일 전 입금은 기간 밖
+    krw_in = next(r for r in rows if r['kind'] == '입금' and r['currency'] == 'KRW')
+    assert krw_in['amount'] == 100000 and krw_in['price'] == 1.0
+    assert next(r for r in rows if r['kind'] == '출금' and r['currency'] == 'KRW')['settle'] == 49000
+    assert all(r['time'].endswith('+09:00') for r in rows) and rows == sorted(rows, key=lambda r: r['time'], reverse=True)
+
+
+def test_bithumb_transfers_without_scope_note(tmp_path, monkeypatch):
+    wd = _wd(tmp_path)
+    wd.config['app_mode'] = 'bithumb'
+    monkeypatch.setattr(wd, '_account', lambda mode=None: FakeBithumb(scope=False))
+    body = wd.app.test_client().get('/api/transfer-history?days=7', environ_base=HERE).get_json()
+    assert body['success'] and body['rows'] == [] and body['notes'] == ['NO_DEPOSIT_SCOPE']
+
+
+def test_page_texts_follow_mode_exchange(tmp_path):
+    """화면 글자: 수수료 · 계좌 이름이 지금 모드 거래소를 따름 (빗썸 0.25% · 업비트 0.05%)"""
+    wd = _wd(tmp_path)
     c = wd.app.test_client()
-    body = c.get('/api/transfer-history?days=7', environ_base=HERE).get_json()
-    assert body['success'] and body['rows'] == [] and 'BITHUMB_UNSUPPORTED' in body['notes']
+    wd.config.update({'app_mode': 'bithumb', 'bithumb_fee_pct': 0.25})
+    html = c.get('/', environ_base=HERE).get_data(as_text=True)
+    assert '(수수료 0.25% 별도)' in html and '내 빗썸 계좌의 실제 돈으로' in html and 'data-ex-day-start="0"' in html
+    wd.config['app_mode'] = 'upbit'
+    html = c.get('/', environ_base=HERE).get_data(as_text=True)
+    assert '(수수료 0.05% 별도)' in html and '내 업비트 계좌의 실제 돈으로' in html and 'data-ex-day-start="9"' in html

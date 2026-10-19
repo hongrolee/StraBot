@@ -31,6 +31,7 @@ from typing import Callable, Dict, List, Optional
 from . import conditions as cd
 from . import spike_rebuy as sr
 from .exchange_wrapper import ExchangeWrapper
+from .exchanges import exchange_name
 from .risk_manager import RiskManager
 from .simulation_engine import SimulationEngine
 
@@ -237,6 +238,16 @@ class BotEngine:
         if time.time() - seen.get(key, 0) >= every:
             seen[key] = time.time()
             self._decide(kind, msg)
+
+    def _flow_wait_note(self, cond: Dict):
+        """실시간 체결이 필요한 조건인데 자료가 없음 — 빗썸은 늘 없음(쓸 수 없다고 1시간에 한 번), 업비트 · 시뮬레이션은 모으는 중 (2026-10-19)"""
+        if self.account_mode == 'bithumb':
+            self._note_every(f"noflow_{cond['id']}", 'warning',
+                             f"'{cond['title']}': 빗썸 모드에는 실시간 체결 정보가 없어 이 조건은 맞지 않습니다 (업비트 · 시뮬레이션 모드에서만 씁니다)",
+                             every=3600)
+            return
+        self._emit_activity(f"'{cond['title']}': 실시간 체결 평소값을 모으는 중입니다 (봇 프로그램을 켠 뒤 "
+                            f"{'1시간' if cond.get('ready_key') == 'spike_ready' else '10분'})", 'info', 'bi-hourglass-split')
 
     def _custom(self, data: Optional[Dict] = None) -> List[Dict]:
         return (data or {}).get('custom') or []
@@ -591,7 +602,7 @@ class BotEngine:
             key = (cond['id'], json.dumps(rule.get('params') or {}, sort_keys=True))
             live_keys.add(key)       # 자료가 잠깐 덜 모여 이번 확인을 건너뛰어도 기준은 지우지 않음 (2026-10-17, 전에는 지워져 새로 들어온 코인을 놓치고 시작 사기를 또 했음)
             if cond['needs_flow'] and not data.get(cond.get('ready_key', 'flow_ready')):
-                self._emit_activity(f"'{cond['title']}': 실시간 체결 평소값을 모으는 중입니다 (봇 프로그램을 켠 뒤 {'1시간' if cond.get('ready_key') == 'spike_ready' else '10분'})", 'info', 'bi-hourglass-split')
+                self._flow_wait_note(cond)
                 continue
             lows = self._lows_for(rule, data, cond['title'])
             if lows is None:
@@ -735,7 +746,7 @@ class BotEngine:
                 self._emit_activity("매수 조건을 찾지 못했습니다 (지워진 내 조건일 수 있습니다)", 'warning', 'bi-exclamation-triangle')
                 return
             if cond['needs_flow'] and not data.get(cond.get('ready_key', 'flow_ready')):
-                self._emit_activity(f"'{cond['title']}': 실시간 체결 평소값을 모으는 중입니다 (봇 프로그램을 켠 뒤 {'1시간' if cond.get('ready_key') == 'spike_ready' else '10분'})", 'info', 'bi-hourglass-split')
+                self._flow_wait_note(cond)
                 return
             lows = self._lows_for(rule, data, cond['title'])
             if lows is None:
@@ -1183,7 +1194,7 @@ class BotEngine:
                 self._decide('info', text, symbol)
         krw = float(self.exchange.get_krw_balance() or 0) if self.exchange else 0.0
         if krw < TOPUP_KRW * (1 + self.fee):
-            note(f"{symbol} 지금 {qty * price:,.0f}원어치라 업비트 최소 주문(5,000원)에 모자랍니다 — 더 사서 합친 뒤 팔아야 하는데 "
+            note(f"{symbol} 지금 {qty * price:,.0f}원어치라 {exchange_name(self.account_mode)} 최소 주문(5,000원)에 모자랍니다 — 더 사서 합친 뒤 팔아야 하는데 "
                  f"원화가 {TOPUP_KRW:,}원보다 적어 기다립니다")
             return None
         coin = {'current_price': price, 'currency': symbol.replace('KRW-', ''), 'korean_name': ''}
@@ -1300,6 +1311,8 @@ class BotEngine:
         s = sr.surge_settings(self._rules())
         if not s['enabled']:
             return []
+        if self.account_mode == 'bithumb':
+            return []                          # 빗썸: 꺾임을 지켜볼 실시간 가격이 없어 팔지 못하니 감지도 하지 않음 (안내는 spike_tick, 2026-10-19)
         now = now or time.time()
         hourly = data.get('hourly') or {}
         found = []
@@ -1324,6 +1337,10 @@ class BotEngine:
             return                               # 꺼져 있어도 진행 중이던 다시 사기는 마저 함
         if snap is None:
             if not self._get_flow:
+                if self.account_mode == 'bithumb' and (s['enabled'] or su['enabled']):
+                    self._note_every('spike_noflow', 'warning',
+                                     "급등 세트(순간 급등 · 하루 급등)는 빗썸 모드에서 동작하지 않습니다 — 실시간 체결 정보가 없어 꺾임을 지켜보지 못합니다 "
+                                     "(업비트 · 시뮬레이션 모드에서만 팔고 다시 삽니다)", every=86400)
                 return
             snap = self._get_flow() or {}
         prices = snap.get('prices') or {}

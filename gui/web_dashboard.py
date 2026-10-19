@@ -351,7 +351,7 @@ class WebDashboard:
             from bot_core.license import enforced
             ex = self._exchange_info()
             return render_template('bot_dashboard.html', config=self.config, app_mode=self.app_mode(), auth_required=self.auth.require_all,
-                                   ex_name=ex['name'], ex_fee=ex['fee'], ex_id=ex['id'],
+                                   ex_name=ex['name'], ex_fee=ex['fee'], ex_id=ex['id'], ex_day_start=ex['day_start_kst'],
                                    version=__version__, license_enforced=enforced())
 
         @self.app.route('/api/status', methods=['GET'])
@@ -878,7 +878,7 @@ class WebDashboard:
                 return jsonify({'success': False, 'error': '봇을 찾지 못했습니다'}), 404
             p = bt.plan(bot, self._custom_conditions())
             limits = {u: min(d, bt.MINUTE_MAX_DAYS) if p['minute'] else d for u, d in self.BT_LIMIT_DAYS.items()}
-            return jsonify({'success': True, 'skipped': p['skipped'], 'notes': p['notes'], 'buy': [c['title'] for _, c in p['buy']],
+            return jsonify({'success': True, 'skipped': p['skipped'], 'notes': p['notes'] + self._bt_ex_notes(), 'buy': [c['title'] for _, c in p['buy']],
                             'sell': [c['title'] for _, c in p['sell']], 'partial': p['partial'], 'limits': limits,
                             'budget': bot.get('budget') or 0})
 
@@ -914,7 +914,7 @@ class WebDashboard:
             p = bt.plan(bot, self._custom_conditions())
             cap = min([self.BT_LIMIT_DAYS.get(bt.TF_UNIT[tf], 9999) for tf in p['tfs'] if tf in bt.TF_UNIT] or [9999])
             limits = {u: min(d, cap, bt.MINUTE_MAX_DAYS if p['minute'] else 9999) for u, d in self.BT_LIMIT_DAYS.items()}
-            return jsonify({'success': True, 'skipped': p['skipped'], 'notes': [n for n in p['notes'] if n.get('title') != '매매대상'],
+            return jsonify({'success': True, 'skipped': p['skipped'], 'notes': [n for n in p['notes'] if n.get('title') != '매매대상'] + self._bt_ex_notes(),
                             'buy': [c['title'] for _, c in p['buy']], 'sell': [c['title'] for _, c in p['sell']],
                             'partial': p['partial'], 'limits': limits})
 
@@ -1000,7 +1000,7 @@ class WebDashboard:
                     return jsonify({'success': False, 'error': '이미 계산 중입니다. 끝난 뒤 다시 눌러 주십시오'}), 409
                 job_id = uuid.uuid4().hex[:10]
                 self._cmp_jobs[job_id] = {'kind': 'bot', 'stage': 'fetch', 'progress': 0.0, 'text': '준비 중…'}
-            threading.Thread(target=self._run_cmp_bot, args=(job_id, bot, coins, unit, start, now, clipped, limit),
+            threading.Thread(target=self._run_cmp_bot, args=(job_id, bot, coins, unit, start, now, clipped, limit, self._fee(self.app_mode())),
                              name='CompareBot', daemon=True).start()
             return jsonify({'success': True, 'job': job_id})
 
@@ -1278,7 +1278,7 @@ class WebDashboard:
         def clear_sim_trade_history():
             """시뮬레이션 거래 내역 지우기: 지금부터만 보이게 (기록 파일 · 봇 성적 · 수익률 그래프 · 가상 계좌는 그대로)"""
             if self.app_mode() != 'sim':
-                return jsonify({'success': False, 'error': '업비트 거래 내역은 실제 거래라 지울 수 없습니다'}), 400
+                return jsonify({'success': False, 'error': f'{exchange_name(self.app_mode())} 거래 내역은 실제 거래라 지울 수 없습니다'}), 400
             self.trade_stores['sim'].set_meta('history_since', int(time.time()))
             self.__dict__.pop('_realized_cache', None)
             return jsonify({'success': True, 'message': '시뮬레이션 거래 내역을 지웠습니다 — 지금부터 새로 쌓입니다'})
@@ -1371,7 +1371,7 @@ class WebDashboard:
                                 r.get('reason') or ('직접 주문' if trade else ''), (r.get('buy_reason') or '') if r.get('kind') == '매도' else '',
                                 r.get('volume'), r.get('price') or '', r.get('amount') if r.get('amount') is not None else '',
                                 r.get('fee'), r.get('settle'), when(r.get('order_time')) if r.get('order_time') else ''])
-                name = f"거래내역_{'시뮬레이션' if self.app_mode() == 'sim' else '업비트'}_{datetime.now():%Y%m%d_%H%M}.csv"
+                name = f"거래내역_{'시뮬레이션' if self.app_mode() == 'sim' else exchange_name(self.app_mode())}_{datetime.now():%Y%m%d_%H%M}.csv"
                 from urllib.parse import quote
                 return Response('\ufeff' + buf.getvalue(), mimetype='text/csv; charset=utf-8',
                                 headers={'Content-Disposition': f"attachment; filename*=UTF-8''{quote(name)}"})
@@ -1383,11 +1383,9 @@ class WebDashboard:
 
         @self.app.route('/api/transfer-history', methods=['GET'])
         def get_transfer_history():
-            """입금·출금 내역 (최근 days일) — 업비트만. 빗썸은 입출금 조회 API 를 아직 붙이지 않아 빈 목록 + 안내 (2026-10-19)"""
+            """입금·출금 내역 (최근 days일) — 지금 모드 거래소(업비트 · 빗썸), 시뮬레이션은 처음 넣은 가상 자금 한 줄"""
             try:
                 days = max(1, min(int(request.args.get('days', 30)), 186))
-                if exchange_of(self.app_mode()) == 'bithumb':
-                    return jsonify({'success': True, 'rows': [], 'notes': ['BITHUMB_UNSUPPORTED']})
                 return jsonify({'success': True, **self._fetch_transfers(days)})
             except HoldingsUnavailable as e:
                 return jsonify({'success': False, 'error': str(e)})
@@ -1764,7 +1762,7 @@ class WebDashboard:
             now = self._mode_price(market, self.app_mode())
             if raw <= 0 or not now:
                 return jsonify({'success': False, 'error': '가격을 알 수 없습니다. 잠시 뒤 다시 시도해 주십시오.'}), 400
-            price = co.snap_price(raw, side, co.tick_size(market, raw))
+            price = co.snap_price(raw, side, co.tick_size(market, raw, exchange_of(self.app_mode())))
             kind = 'stop'                                   # 모두 예약 (업비트에는 걸지 않음 — 원화 · 코인이 묶이지 않게)
             dir_ = co.direction(price, now)
             mode = self.app_mode()
@@ -1803,8 +1801,9 @@ class WebDashboard:
                     if not math.isfinite(krw) or krw < co.MIN_ORDER_KRW:
                         return jsonify({'success': False, 'error': '최소 주문금액은 5,000원입니다.'}), 400
                     free = float(acct.get_balance('KRW') or 0)
-                    if krw * (1 + co.FEE) > free + 1e-6:
-                        return jsonify({'success': False, 'error': f'주문 가능한 원화({free:,.0f}원)보다 많습니다. (수수료 0.05% 포함)'}), 400
+                    fee = self._fee(mode)                       # 이 모드 거래소 수수료 (빗썸은 설정 값 — 전에는 업비트 0.05% 고정, 2026-10-19)
+                    if krw * (1 + fee) > free + 1e-6:
+                        return jsonify({'success': False, 'error': f'주문 가능한 원화({free:,.0f}원)보다 많습니다. (수수료 {fee * 100:g}% 포함)'}), 400
                 else:
                     try:
                         qty = float(data.get('qty') or 0)
@@ -2438,6 +2437,12 @@ class WebDashboard:
                 job['current'] = None
                 with self._sell_lock:
                     self._selling.discard(cur)
+
+    def _bt_ex_notes(self) -> List[Dict]:
+        """백테스트 안내 한 줄: 빗썸 모드도 캔들은 업비트 것 (2026-10-19)"""
+        if exchange_of(self.app_mode()) != 'bithumb':
+            return []
+        return [{'title': '빗썸 시세', 'note': '빗썸 모드에서도 업비트 캔들로 계산합니다. 두 거래소 값은 거의 같지만, 빗썸에만 있는 코인은 계산하지 못합니다.'}]
 
     def _fee(self, mode: Optional[str] = None) -> float:
         return fee_rate(mode or self.app_mode(), self.config)
@@ -3196,7 +3201,8 @@ class WebDashboard:
             logger.warning(f"다른 코인 비교 값 계산 실패: {e}", exc_info=True)
             job.update(stage='error', error=str(e)[:200], at=0)
 
-    def _run_cmp_bot(self, job_id: str, bot: Dict, coins: list, unit: str, start: int, end: int, clipped: bool, limit_days: int):
+    def _run_cmp_bot(self, job_id: str, bot: Dict, coins: list, unit: str, start: int, end: int, clipped: bool, limit_days: int,
+                     fee: Optional[float] = None):
         """코인마다: 필요한 캔들 받기(진행률) → 구간 처음에 산 채로 봇 규칙 백테스트 → 같은 시각끼리 더함"""
         from bot_core import backtest as bt
         from gui import coin_compare as cc
@@ -3221,7 +3227,7 @@ class WebDashboard:
                     candles = {u: store.get_range(m, u, a, b, self._paced_fetch, on_progress=page) for u, a, b in need}
                     job.update(stage='calc', text=f"봇 규칙대로 계산 중 · {i + 1}/{len(coins)}개")
                     r = bt.run(bot, m, unit, start, end, candles, custom, cc.START_KRW,
-                               facts=lambda cur, day: self.coin_facts.facts(cur, day), start_held=True)
+                               facts=lambda cur, day: self.coin_facts.facts(cur, day), start_held=True, fee=fee)
                 except Exception as e:
                     failed.append({'c': c, 'why': str(e)[:120]})
                     continue
@@ -3702,26 +3708,50 @@ class WebDashboard:
                               'volume': amount, 'price': 1.0, 'amount': amount, 'fee': 0.0, 'settle': amount,
                               'state': '가상 자금'}], 'notes': []}
         from datetime import timedelta, timezone
+        kst = timezone(timedelta(hours=9))
         since = datetime.now(timezone.utc) - timedelta(days=days)
+        mode = self.app_mode()
+        if exchange_of(mode) == 'bithumb':
+            # 빗썸 v1: 코인 입금 · 원화 입금 · 코인 출금 · 원화 출금이 따로, 응답은 업비트와 같은 모양 (2026-10-19)
+            from bot_core.exchanges import BithumbRequestError
+            acct = self._account(mode)                       # 키가 없으면 HoldingsUnavailable('NO_API_KEY')
+
+            def get(path, params):
+                try:
+                    return 200, acct._send('GET', path, params)
+                except BithumbRequestError as e:
+                    return e.status, {'error': {'name': e.name}}
+            paths = (('/v1/deposits', '입금'), ('/v1/deposits/krw', '입금'), ('/v1/withdraws', '출금'), ('/v1/withdraws/krw', '출금'))
+        else:
+            get = self._upbit_private_get
+            paths = (('/v1/deposits', '입금'), ('/v1/withdraws', '출금'))
+
+        def parse(when):
+            """ISO 시각 → 시간대 있는 값 (시간대가 없으면 한국 시각으로 봄)"""
+            try:
+                t = datetime.fromisoformat(str(when).replace('Z', '+00:00'))
+            except (TypeError, ValueError):
+                return None
+            return t if t.tzinfo else t.replace(tzinfo=kst)
         rows, notes = [], []
-        for path, kind in (('/v1/deposits', '입금'), ('/v1/withdraws', '출금')):
+        for path, kind in paths:
             for page in range(1, 11):  # 최신순 100개씩, 기간을 벗어나면 멈춤
-                status, data = self._upbit_private_get(path, {'limit': 100, 'page': page, 'order_by': 'desc'})
-                if status == 401 and isinstance(data, dict) and data.get('error', {}).get('name') == 'out_of_scope':
+                status, data = get(path, {'limit': 100, 'page': page, 'order_by': 'desc'})
+                if isinstance(data, dict) and (data.get('error') or {}).get('name') == 'out_of_scope':
                     if 'NO_DEPOSIT_SCOPE' not in notes:
                         notes.append('NO_DEPOSIT_SCOPE')
                     break
-                if status != 200 or not data:
+                if status != 200 or not data or not isinstance(data, list):
                     break
                 older = False
                 for d in data:
-                    when = d.get('done_at') or d.get('created_at')
-                    if not when or datetime.fromisoformat(when) < since:
+                    t = parse(d.get('done_at') or d.get('created_at'))
+                    if t is None or t < since:
                         older = True
                         continue
                     amount, fee = float(d.get('amount') or 0), float(d.get('fee') or 0)
                     rows.append({
-                        'time': when, 'order_time': None, 'currency': d.get('currency'), 'market': None,
+                        'time': t.astimezone(kst).isoformat(timespec='seconds'), 'order_time': None, 'currency': d.get('currency'), 'market': None,
                         'kind': kind, 'volume': amount, 'price': 1.0 if d.get('currency') == 'KRW' else None,
                         'amount': amount if d.get('currency') == 'KRW' else None, 'fee': fee,
                         'settle': amount - fee if kind == '출금' else amount, 'state': d.get('state'),
