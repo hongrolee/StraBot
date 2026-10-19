@@ -104,7 +104,7 @@ gui/dashboard_auth.py    서버 모드 대시보드 비밀번호 · 로그인
 gui/exchange_feed.py     빗썸 시세 묶음
 static/ templates/       화면 (JS · CSS · HTML)
 utils/                   업비트 요청 속도 조절 · 설정 암호화 · 업데이트 확인 · 코인 정보
-tests/                   pytest (649개)
+tests/                   pytest (659개)
 tools/                   검증 · 백테스트 연구 스크립트 (StraHub 블로그의 검증 기록에 쓴 것)
 AutoTradingBot.spec, setup.iss, build.bat   Windows 설치 파일 빌드
 ```
