@@ -40,6 +40,7 @@ SKIP_WHY = {
     'spike_pump': '매수 조건으로 쓴 순간 급등은 실시간 1분 체결로 판단해 이번 백테스트에서는 빠졌습니다',
     'pre_spike': '실시간 1분 체결로 판단하는 조건이라 이번 백테스트에서는 빠졌습니다',
 }
+BAR_KEYS = ('bar_open', 'bar_low', 'bar_high')     # 걸음 봉의 시가 · 저가 · 고가 — 수요 구역이 봉 안에서 닿았는지 봄 (2026-10-22)
 MINUTE_MAX_DAYS = 90                   # 1분봉이 필요한 봇(급등 일부 팔기)은 90일까지
 KIND_TEXT = {'spike': {'name': '급등', 'sell': '급등 때 일부 팔기', 'rebuy': '급등 뒤 다시 사기'},
              'surge': {'name': '하루 급등', 'sell': '하루 급등 때 일부 팔기', 'rebuy': '하루 급등 뒤 다시 사기'}}
@@ -75,11 +76,19 @@ def plan(bot: Dict, custom: List[Dict]) -> Dict:
             if why:
                 out['skipped'].append({'side': side, 'title': cond['title'], 'why': why})
                 continue
+            if cond['id'] == 'zone_buy':
+                out['notes'].append({'side': side, 'title': cond['title'],
+                                     'note': '백테스트 봉이 규칙의 봉과 같으면 봉 안에서 가격이 닿았는지 보고, 닿는 순간 · 더 내려오면은 그 값에, '
+                                             '봉이 끝난 뒤는 그 봉 종가에 산 것으로 봅니다. 봉이 다르면 봉이 끝날 때 가격으로 봅니다. '
+                                             '실제 봇은 1분마다 지금 가격으로 보고 시장가로 삽니다'})
             if cond['id'] == 'spike_prone':
                 out['notes'].append({'side': side, 'title': cond['title'],
                                      'note': '그때의 가격 · 하루 거래대금과 그때까지의 상장 기간으로 판정합니다 (바이낸스 상장 여부는 지금 기준)'})
             tf = (rule.get('params') or {}).get('tf') or 'day'
             out['tfs'].add(tf if tf in TF_SEC else 'day')
+            htf = (rule.get('params') or {}).get('htf')
+            if htf:
+                out['tfs'].add(htf if htf in TF_SEC else 'day')     # 두 봉을 함께 보는 규칙의 위 봉
             out[side].append((rule, cond))
     return out
 
@@ -244,7 +253,7 @@ def run(bot: Dict, market: str, unit: str, start: int, end: int, candles: Dict[s
         coin = {'currency': cur, 'korean_name': '', 'current_price': c, 'prev_close': prev_close,
                 'change_rate': (c / prev_close - 1) * 100 if prev_close else 0.0, 'today_low': min(today_low, c),
                 'trade_value_24h': value_24h, 'warning': False, 'notices': [], 'held': held,
-                'listed_days': None, 'on_binance': None}
+                'listed_days': None, 'on_binance': None, 'bar_open': o, 'bar_low': l, 'bar_high': h}
         if facts:
             try:
                 coin.update(facts(cur, datetime.fromtimestamp(D + 9 * 3600, timezone.utc).date()))
@@ -252,7 +261,7 @@ def run(bot: Dict, market: str, unit: str, start: int, end: int, candles: Dict[s
                 pass
         return D, coin, d, hourly
 
-    def judge(rule: Dict, cond: Dict, coin: Dict, d: Dict, hourly: Dict, D: float, for_sell: bool = False) -> bool:
+    def judge(rule: Dict, cond: Dict, coin: Dict, d: Dict, hourly: Dict, D: float, for_sell: bool = False) -> Optional[Dict]:
         tf = (rule.get('params') or {}).get('tf') or 'day'
         dd = d
         if tf != 'day' and tf in TF_UNIT:
@@ -260,9 +269,16 @@ def run(bot: Dict, market: str, unit: str, start: int, end: int, candles: Dict[s
             k = s.done_before(D)
             dd = {**d, **_period(s.rows[max(0, k - 199):k])}
         # 매도 판단은 실제 봇(_check_sells)처럼 스테이블코인도 봄 — 가진 것은 팔 수 있어야 하므로 (2026-10-17)
+        htf = (rule.get('params') or {}).get('htf')
+        if htf and htf != tf:                               # 위 봉: 이 걸음이 끝나는 순간까지 끝난 봉 (미래 안 봄)
+            hs = series[TF_UNIT.get(htf, 'day')]
+            kh = hs.done_before(D)
+            dd = {**dd, 'htf': _period(hs.rows[max(0, kh - 199):kh])}
+        if TF_UNIT.get(tf) != unit:                         # 지금 봉 시가 · 저가는 규칙의 봉이 걸음 봉과 같을 때만 뜻이 있음
+            coin = {k: v for k, v in coin.items() if k not in BAR_KEYS}
         hits = cd.run_condition(cond, rule.get('params'), [coin], {market: dd}, {market: hourly},
                                 include_stable=True if for_sell else include_stable, now=D)
-        return bool(hits)
+        return hits[0] if hits else None                   # 맞은 코인 (s_fill = 봉 안에서 산 값, 수요 구역 사기)
 
     def sell(D: float, price: float, reason: str, part: float = 1.0) -> Optional[Dict]:
         """part = 팔 비율 (1 = 전부). 다 팔면 진행 중이던 급등 일부 팔기 · 다시 사기도 멈춤 (실제 봇과 같음)"""
@@ -459,7 +475,9 @@ def run(bot: Dict, market: str, unit: str, start: int, end: int, candles: Dict[s
                 coin['held'] = True
                 coin['bot_entry'] = pos['entry'] if pos else None          # 산 값이 필요한 매도 조건 (Hongro 전략2 팔기)
                 coin['bot_opened_ts'], coin['bot_now_ts'] = (pos.get('at'), D) if pos else (None, None)   # 산 지 N일 지남
-                hits = [cond['title'] for rule, cond in p['sell'] if judge(rule, cond, coin, d, hourly, D, for_sell=True)]
+                got = [(cond, judge(rule, cond, coin, d, hourly, D, for_sell=True)) for rule, cond in p['sell']]
+                got = [(cond, h) for cond, h in got if h is not None]
+                hits = [cond['title'] for cond, _ in got]
                 if rule_match(rules, 'sell') == 'all':
                     ok = len(hits) == len(p['sell'])
                     name = ' + '.join(hits)
@@ -467,7 +485,9 @@ def run(bot: Dict, market: str, unit: str, start: int, end: int, candles: Dict[s
                     ok = bool(hits)
                     name = hits[0] if hits else ''
                 if ok:
-                    sell(D, c, f"매도 조건 '{name}'에 맞음")
+                    fill = next((h['s_fill'] for _, h in got if h.get('s_fill')), None)   # 봉 안에서 판 값 (수요 구역 손절 · 익절)
+                    why = next((h.get('s_why') for _, h in got if h.get('s_why')), None)
+                    sell(D, fill or c, f"매도 조건 '{name}'에 맞음" + (f" ({why})" if why else ''))
 
         # ── 매수: 안 맞다가 맞게 된 순간 (첫 걸음은 기준만) ──
         if p['buy'] and not excluded and buy_on:
@@ -475,16 +495,21 @@ def run(bot: Dict, market: str, unit: str, start: int, end: int, candles: Dict[s
             last_sell = next((t for t in reversed(trades) if t['side'] == 'sell'), None)
             coin['bot_profit_sold'] = bool(last_sell and (last_sell['profit'] or 0) > 0)   # Hongro 전략2 의 B
             want = None
+            fill = None                                    # 봉 안에서 산 값 (수요 구역 사기 '닿는 순간' 등) — 없으면 봉 끝 가격
             if rule_match(rules, 'buy') == 'all' and len(p['buy']) > 1:
-                now_ok = all(judge(rule, cond, coin, d, hourly, D) for rule, cond in p['buy'])
+                got = [judge(rule, cond, coin, d, hourly, D) for rule, cond in p['buy']]
+                now_ok = all(got)
                 key = ('all',)
                 if key in baselines and now_ok and not baselines[key]:
                     want = ' + '.join(cond['title'] for _, cond in p['buy'])
+                    fill = next((g['s_fill'] for g in got if g.get('s_fill')), None)
                 baselines[key] = now_ok
             else:
                 for rule, cond in p['buy']:
-                    now_ok = judge(rule, cond, coin, d, hourly, D)
+                    hit = judge(rule, cond, coin, d, hourly, D)
+                    now_ok = hit is not None
                     key = (cond['id'], json.dumps(rule.get('params') or {}, sort_keys=True))
+                    took = want is None
                     if key not in baselines:
                         if cond.get('start_buy') and now_ok and want is None and not start_wait:
                             want = cond['title']
@@ -493,9 +518,11 @@ def run(bot: Dict, market: str, unit: str, start: int, end: int, candles: Dict[s
                     elif (now_ok and baselines[key] and want is None and cond.get('start_buy') and not start_wait
                           and pos is None and (last_sell_ts is None or D - last_sell_ts >= REFILL_SEC)):
                         want = cond['title']               # 실제 봇의 '돈이 생기면 더 사기'(_buy_refill): 판 뒤 24시간 지나도 맞으면 다시 삼
+                    if took and want is not None:
+                        fill = hit.get('s_fill')
                     baselines[key] = now_ok
             if want and pos is None and rm.max_positions > 0:
-                buy(D, c, want)
+                buy(D, fill or c, want)
 
         value = cash + (pos['qty'] * c if pos else 0)
         peak_value = max(peak_value, value)

@@ -466,11 +466,42 @@ class BotEngine:
         return [dict(c, held=c['currency'] in held) for c in coins]
 
     def _with_bot_state(self, rules: Dict, coins: List[Dict]) -> List[Dict]:
-        """이 봇의 기록이 필요한 조건(Hongro 전략2)이 있을 때만: 코인마다 '마지막으로 판 거래가 이익이었나'를 붙인 복사본"""
-        if not any(r.get('id') == 'hongro2_buy' for r in rule_list(rules, 'buy')):
-            return coins
-        last = self._last_sell_profit()
-        return [dict(c, bot_profit_sold=(last.get(f"KRW-{c['currency']}") or 0) > 0) for c in coins]
+        """이 봇의 기록이 필요한 조건이 있을 때만 코인마다 붙인 복사본:
+        Hongro 전략2 = '마지막으로 판 거래가 이익이었나', 수요 구역 사기 = '이 봇이 마지막으로 사고판 시각'(같은 봉 안 되사기 막기)"""
+        ids = {r.get('id') for r in rule_list(rules, 'buy')}
+        if 'hongro2_buy' in ids:
+            last = self._last_sell_profit()
+            coins = [dict(c, bot_profit_sold=(last.get(f"KRW-{c['currency']}") or 0) > 0) for c in coins]
+        if 'zone_buy' in ids or 'tc_buy' in ids:          # 하루 매매 전략도 '구역 한 번만'에 씀
+            ts = self._last_trade_ts()
+            coins = [dict(c, bot_last_trade_ts=ts.get(f"KRW-{c['currency']}")) for c in coins]
+        return coins
+
+    def _last_trade_ts(self) -> Dict[str, float]:
+        """코인마다 이 봇이 마지막으로 사거나 판 시각 (trades.json 의 time = 이 PC 시각, 파일이 바뀔 때만 다시 읽음)"""
+        path = self.data_dir / 'trades.json'
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            return {}
+        cache = self.__dict__.get('_last_trade_cache')
+        if not cache or cache[0] != mtime:
+            try:
+                items = json.loads(path.read_text(encoding='utf-8'))
+            except Exception:
+                items = []
+            out = {}
+            for t in items:
+                try:
+                    at = datetime.fromisoformat(str(t.get('time'))).timestamp()
+                except (TypeError, ValueError):
+                    continue
+                sym = t.get('symbol')
+                if sym and at > out.get(sym, 0):
+                    out[sym] = at
+            cache = (mtime, out)
+            self._last_trade_cache = cache
+        return cache[1]
 
     def _last_sell_profit(self) -> Dict[str, float]:
         """코인마다 이 봇이 마지막으로 판 거래의 손익 (trades.json — 파일이 바뀔 때만 다시 읽음)"""
@@ -492,7 +523,7 @@ class BotEngine:
             self._last_sell_cache = cache
         return cache[1]
 
-    TF_NAME = {'4h': '4시간봉', '1h': '1시간봉'}
+    TF_NAME = {'4h': '4시간봉', '1h': '1시간봉', '15m': '15분봉', '5m': '5분봉'}
 
     def _lows_for(self, rule: Dict, data: Dict, title: str = '') -> Optional[Dict]:
         """규칙이 고른 시간 봉의 기간 시세 (일봉이면 lows). 4시간·1시간봉을 아직 못 받았으면 None (이번 판은 건너뜀)"""
@@ -505,6 +536,13 @@ class BotEngine:
         if not bars or have < len(coins) * DATA_READY_RATIO:
             self._emit_activity(f"'{title}': {self.TF_NAME.get(tf, tf)} 시세를 모으는 중입니다 — 다 모이면 확인합니다", 'info', 'bi-hourglass-split')
             return None
+        htf = (rule.get('params') or {}).get('htf')
+        if htf and htf != tf:                      # 두 봉을 함께 보는 규칙(하루 매매 전략): 위 봉을 'htf' 칸으로 붙임
+            hb = (data.get('lows') or {}) if htf == 'day' else (data.get('lows_tf') or {}).get(htf)
+            if not hb:
+                self._emit_activity(f"'{title}': {self.TF_NAME.get(htf, htf)} 시세를 모으는 중입니다 — 다 모이면 확인합니다", 'info', 'bi-hourglass-split')
+                return None
+            return {m: {**v, 'htf': hb.get(m)} for m, v in bars.items()}
         return bars
 
     # ── 매도 ──

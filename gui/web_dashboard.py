@@ -3427,9 +3427,10 @@ class WebDashboard:
             for side in ('buy', 'sell'):
                 rules = tr.get(side) or []
                 for r in (rules if isinstance(rules, list) else [rules]):
-                    tf = ((r or {}).get('params') or {}).get('tf')
-                    if tf in self.TF_UNIT:
-                        used.add(tf)
+                    for key in ('tf', 'htf'):              # htf: 두 봉을 함께 보는 규칙의 위 봉 (하루 매매 전략)
+                        tf = ((r or {}).get('params') or {}).get(key)
+                        if tf in self.TF_UNIT:
+                            used.add(tf)
         return used
 
     def _signal_stats_summary(self) -> Dict:

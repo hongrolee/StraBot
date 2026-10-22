@@ -1367,6 +1367,7 @@ PATTERN_IDS = ['hammer', 'bull_engulf', 'morning_star', 'three_white', 'shooting
 
 from bot_core import strategy_hongro2 as _hongro2  # noqa: E402
 from bot_core import strategy_zone as _zone  # noqa: E402
+from bot_core import strategy_tc as _tc  # noqa: E402
 
 
 def _t_held_days(c, p, d):
@@ -1449,10 +1450,21 @@ PRESETS: Dict[str, Dict] = {
     'hongro2_sell': {'title': 'Hongro 전략2 팔기', 'params': {'tf': '4h'}, 'test': _hongro2.sell_test, 'sort': ('s_gain', 'desc')},
     # 수요 구역 되돌림 한 쌍 (bot_core/strategy_zone.py, 2026-10-18) — lab zone_retest 검증(2022~, 245코인): 되돌아온 순간 사면 거래당 +0.5%,
     # 체결이 0.5% 밀리면 0 · 코인당 1년 4번꼴. trend=1 은 영상의 '상승 추세에서만' (거래 수만 줄고 거래당 % 는 같았음)
-    'zone_buy': {'title': '수요 구역 되돌림 사기', 'params': {'tf': '1h', 'impulse': 3, 'quiet': 6, 'expire': 150, 'band': 0.5, 'rr': 2.5, 'trend': 0, 'k': 5},
+    # entry = 사는 때 (0 닿는 순간 · 1 윗선보다 depth% 더 내려오면 · 2 닿은 봉이 끝난 뒤), band 기본 0 (2026-10-22, 새로 만드는 규칙부터)
+    # trend 기본 1 (2026-10-22): 영상의 1단계 '상승 추세에서만'. 검증 대표 숫자(+0.51% · 4,651번)도 추세를 켠 결과
+    'zone_buy': {'title': '수요 구역 되돌림 사기', 'params': {'tf': '1h', 'impulse': 3, 'quiet': 6, 'expire': 150, 'band': 0, 'rr': 2.5, 'trend': 1, 'k': 5,
+                                                         'entry': 0, 'depth': 0.2},
                  'test': _zone.buy_test, 'sort': ('s_rr', 'desc')},
-    'zone_sell': {'title': '수요 구역 목표 · 깨짐 팔기', 'params': {'tf': '1h', 'impulse': 3, 'quiet': 6, 'expire': 150, 'band': 0.5, 'trend': 0, 'k': 5},
+    'zone_sell': {'title': '수요 구역 목표 · 깨짐 팔기', 'params': {'tf': '1h', 'impulse': 3, 'quiet': 6, 'expire': 150, 'band': 0, 'trend': 0, 'k': 5},
                   'test': _zone.sell_test, 'sort': ('s_gain', 'asc')},
+    # 하루 매매 전략 한 쌍 (bot_core/strategy_tc.py, 2026-10-22) — 유튜브 The Trading Channel 568만 조회. tf = 거래 봉, htf = 한 단계 위 봉
+    # 검증(lab tc_retest_db, 2022~): 5분↔15분 거래당 −0.07% · 1시간↔4시간 −0.005%, 아무 때나 산 것과 구분 안 됨 — 시뮬레이션 비교용
+    'tc_buy': {'title': '하루 매매 전략 사기 (위 봉 추세 · 뚫린 고점 · 쌍바닥)',
+               'params': {'tf': '5m', 'htf': '15m', 'k_htf': 5, 'k_ltf': 2, 'zpad': 0.25, 'max_wait': 6, 'stop_atr': 1.0, 'trend': 1},
+               'test': _tc.buy_test, 'sort': ('s_rr', 'desc')},
+    'tc_sell': {'title': '하루 매매 전략 팔기 (쌍바닥 아래 손절 · 직전 고점 익절)',
+                'params': {'tf': '5m', 'htf': '15m', 'k_htf': 5, 'k_ltf': 2, 'zpad': 0.25, 'max_wait': 6, 'stop_atr': 1.0},
+                'test': _tc.sell_test, 'sort': ('s_gain', 'asc')},
     'buy_targets': {'title': '매매대상 코인 바로 사기', 'start_buy': True, 'params': {},
                     'test': _t_all_coins, 'sort': ('trade_value_24h', 'desc')},
     'value_top': {'title': '거래대금 상위', 'params': {'top': 20}, 'test': _t_value_top, 'sort': ('s_value_rank', 'asc')},
@@ -1655,7 +1667,7 @@ def resolve(cond_id: str, custom_conditions: List[Dict]) -> Optional[Dict]:
     return None
 
 
-TF_AWARE = {'volume_spike', 'zone_sell'}      # zone_sell: 산 뒤로 끝난 봉 수를 봉 길이로 셈
+TF_AWARE = {'volume_spike', 'zone_sell', 'zone_buy', 'tc_buy', 'tc_sell'}      # zone_sell: 산 뒤로 끝난 봉 수 · zone_buy: 같은 봉 안 되사기 막기 (봉 길이로 셈)
 
 
 def run_condition(cond: Dict, params: Optional[Dict], coins: List[Dict], lows: Dict[str, Dict],

@@ -284,3 +284,35 @@ def test_stable_coin_can_be_sold_by_rule():
     b = bot([{'id': 'all_coins', 'params': {}}], [{'id': 'held_days', 'params': {'days': 2}}], stop_loss_percent=0, take_profit_percent=0)
     r = bt.run(b, 'KRW-USDT', '60', rows[0][0], rows[-1][0] + H, {'60': rows, 'day': [], 'week': []}, start_held=True)
     assert any(t['side'] == 'sell' and '산 지' in t['reason'] for t in r['trades'])
+
+
+def zone_rows():
+    """조용한 30봉(100 ~ 100.4) → 치솟음(105) → 110 까지 → 저가가 구역(100 ~ 100.4)에 닿고 101.5 로 마감하는 봉 → 다시 오름"""
+    prices = [100.0 if i % 2 == 0 else 100.4 for i in range(30)] + [105.0, 107.0, 110.0, 108.0, 101.5, 103.0, 104.0, 104.5]
+    return bars(prices, low={34: 100.3})
+
+
+@pytest.mark.parametrize('entry, price', [(0, 100.4), (2, 101.5), (1, None)])
+def test_zone_buy_entry_in_backtest(entry, price):
+    """수요 구역 '사는 때': 닿는 순간은 봉 안에서 윗선 값에, 봉이 끝난 뒤는 그 봉 종가에, 더 내려오면(0.2%)은 거기까지 안 내려와 안 삼"""
+    rows = zone_rows()
+    b = bot([{'id': 'zone_buy', 'params': {'tf': '1h', 'entry': entry, 'depth': 0.2, 'band': 0, 'trend': 0}}], take_profit_percent=50)
+    r = bt.run(b, 'KRW-X', '60', rows[32][0], rows[-1][0] + H, {'60': rows, 'day': [], 'week': []})
+    buys = [t for t in r['trades'] if t['side'] == 'buy']
+    if price is None:
+        assert not buys
+    else:
+        assert buys and abs(buys[0]['price'] - price * (1 + bt.SLIP)) < 1e-9 and buys[0]['time'] == bt._iso(rows[34][0] + H)
+    assert any(n['title'] == '수요 구역 되돌림 사기' for n in r['notes'])
+
+
+def test_zone_sell_inside_bar_in_backtest():
+    """수요 구역 팔기: 산 뒤 봉 안에서 아랫선 −0.1% 까지 내려가면 그 값에 손절 (봉 종가가 아니라)"""
+    rows = zone_rows()
+    rows[36][3] = 99.0                                   # 산 뒤 두 번째 봉이 구역(100 ~ 100.4) 아래 99 까지 찍고 104 로 마감
+    b = bot([{'id': 'zone_buy', 'params': {'tf': '1h', 'band': 0, 'trend': 0}}], [{'id': 'zone_sell', 'params': {'tf': '1h', 'band': 0}}],
+            stop_loss_percent=0, take_profit_percent=0)
+    r = bt.run(b, 'KRW-X', '60', rows[32][0], rows[-1][0] + H, {'60': rows, 'day': [], 'week': []})
+    sells = [t for t in r['trades'] if t['side'] == 'sell']
+    assert sells and '구역 아래로' in sells[0]['reason']
+    assert abs(sells[0]['price'] - 100.0 * 0.999 * (1 - bt.SLIP)) < 1e-9

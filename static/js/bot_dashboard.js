@@ -5594,16 +5594,32 @@ const SCREEN_PRESETS = [
     // 수요 구역 되돌림 한 쌍 — 봇 규칙 전용 (계산은 서버 bot_core/strategy_zone.py, 2026-10-18)
     {
         id: 'zone_buy', title: '수요 구역 되돌림 사기', icon: 'bi-box-arrow-in-down', ruleOnly: true,
-        desc: (p) => '직전 ' + p.quiet + '봉이 ' + p.impulse + '% 폭 안에서 조용하다가 한 봉이 ' + p.impulse + '% 이상 치솟은 자리(치솟기 직전 봉의 저가~고가 = 수요 구역)로 가격이 되돌아오면 삽니다. 구역이 종가로 깨졌거나 ' + p.expire + '봉이 지나면 버리고, 치솟은 뒤 최고가까지의 거리가 구역 아랫선까지 거리의 ' + p.rr + '배 이상일 때만 삽니다' + (Number(p.trend) ? ' · 고점과 저점이 높아지는 상승 추세일 때만' : '') + '. 검증(2022~ 245코인 1시간봉)에서는 되돌아온 순간 바로 사야 거래당 +0.5%였고 체결이 0.5% 늦으면 우위가 없었습니다',
+        desc: (p) => '직전 ' + p.quiet + '봉이 ' + p.impulse + '% 폭 안에서 조용하다가 한 봉이 ' + p.impulse + '% 이상 치솟은 자리(치솟기 직전 봉의 저가~고가 = 수요 구역)로 가격이 되돌아오면 '
+            + ({ 1: `윗선보다 ${p.depth}% 더 내려왔을 때 삽니다`, 2: '닿은 봉이 끝난 뒤 그다음 가격에 삽니다' }[Number(p.entry)] || (Number(p.band) ? `윗선 +${p.band}% 안으로 내려온 순간 삽니다` : '윗선에 닿는 순간 삽니다'))
+            + '. 구역이 종가로 깨졌거나 ' + p.expire + '봉이 지나면 버리고, 치솟은 뒤 최고가까지의 거리가 구역 아랫선까지 거리의 ' + p.rr + '배 이상일 때만 삽니다' + (Number(p.trend) ? ' · 고점과 저점이 높아지는 상승 추세일 때만' : '') + '. 검증(2022~ 245코인 1시간봉)에서는 닿는 순간 사면 거래당 +0.5%, 0.2% 더 내려와야 사면 +0.24%, 닿은 봉이 끝난 뒤 사면 −0.08%였습니다',
         params: [
-            { key: 'impulse', label: '치솟음', unit: '% 이상', value: 3, min: 1, max: 30, step: 0.5 },
-            { key: 'quiet', label: '직전 조용한 봉', unit: '봉', value: 6, min: 2, max: 30 },
-            { key: 'expire', label: '구역 유효', unit: '봉', value: 150, min: 10, max: 199 },
-            { key: 'band', label: '윗선 여유', unit: '%', value: 0.5, min: 0, max: 5, step: 0.1 },
-            { key: 'rr', label: '손익비', unit: '배 이상', value: 2.5, min: 1, max: 10, step: 0.5 },
-            { key: 'trend', label: '상승 추세에서만', unit: '(1 = 예)', value: 0, min: 0, max: 1 },
-            { key: 'k', label: '흔들림 폭', unit: '봉', value: 5, min: 2, max: 20 },
+            // 사는 때: StraHub 영상 '닿는 그 순간, 정말 살 수 있을까요?'의 세 가지 (2026-10-22) — 숫자로 저장 (0 · 1 · 2)
+            { key: 'entry', label: '사는 때', value: 0, choices: [[0, '닿는 순간'], [1, '더 내려오면'], [2, '봉이 끝난 뒤']],
+              help: '가격이 구역으로 되돌아왔을 때 언제 살지입니다. 검증에서는 빨리 살수록 나았습니다 (닿는 순간 +0.51% · 0.2% 더 내려오면 +0.24% · 봉이 끝난 뒤 −0.08%).' },
+            { key: 'depth', label: '윗선보다 더 내려오는 폭', unit: '%', value: 0.2, min: 0.05, max: 3, step: 0.05, show: (p) => Number(p.entry) === 1,
+              help: '구역 윗선보다 이만큼 더 내려와야 삽니다. 깊게 할수록 덜 사고 검증 우위도 줄었습니다 (0.1% +0.29 · 0.2% +0.24 · 0.5% +0.03).' },
+            { key: 'impulse', label: '치솟음', unit: '% 이상', value: 3, min: 1, max: 30, step: 0.5,
+              help: "한 봉이 이만큼 이상 올라야 '치솟음'으로 보고 그 앞 봉을 구역으로 삼습니다. 낮추면 구역이 많아져 자주 사고, 높이면 뚜렷한 자리만 남아 드물게 삽니다." },
+            { key: 'quiet', label: '직전 조용한 봉', unit: '봉', value: 6, min: 2, max: 30,
+              help: (p) => `치솟기 전 ${p.quiet}봉 동안 오르내림이 ${p.impulse}% 안이어야 합니다. 늘리면 오래 조용했던 자리만 봅니다.` },
+            { key: 'expire', label: '구역 유효', unit: '봉', value: 150, min: 10, max: 199,
+              help: (p) => `구역이 생긴 뒤 ${p.expire}봉(${zoneBarsSpan(p, p.expire)})이 지나면 버립니다. 늘리면 오래된 구역으로 돌아와도 삽니다.` },
+            { key: 'band', label: '윗선 여유', unit: '%', value: 0, min: 0, max: 5, step: 0.1,   // 윗선보다 비싸게 사면 체결이 밀린 것과 같아 기본 0 (2026-10-22)
+              help: '구역 윗선보다 이만큼 비싸도 삽니다. 0이면 윗선 값 이하에서만 삽니다. 검증에서는 0.5% 비싸게 사면 우위가 거의 없었습니다.' },
+            { key: 'rr', label: '손익비', unit: '배 이상', value: 2.5, min: 1, max: 10, step: 0.5,
+              help: '목표(치솟은 뒤 최고가)까지 오를 폭이 손절(구역 아랫선)까지 내릴 폭의 이 배수 이상일 때만 삽니다. 영상 규칙은 2.5배이고, 검증에서는 거래 수만 줄고 거래당 결과는 비슷했습니다.' },
+            { key: 'trend', label: '상승 추세에서만 사기', value: 1, choices: [[0, '아니오'], [1, '예']],   // 영상 1단계 (2026-10-22 기본 켬)
+              help: '영상의 1단계: 고점과 저점이 함께 높아지는 상승 추세일 때만 삽니다. 끄면 거래가 늘고 거래당 결과는 비슷했습니다.' },
+            { key: 'k', label: '흔들림 폭', unit: '봉', value: 5, min: 2, max: 20, show: (p) => Number(p.trend) === 1,
+              help: '추세를 볼 때 고점 · 저점을 좌우 몇 봉 안에서 찾을지입니다. 늘리면 큰 흐름만 봅니다.' },
         ],
+        verified: '이 숫자들은 과거 5년 · 245코인으로 검증한 값입니다. 잘 모르시면 그대로 두셔도 됩니다.',
+        tfDefault: '1h',
         columns: [['s_rr', '손익비'], ['s_up', '목표까지 %'], ['s_down', '아랫선까지 %'], ['s_ago', '치솟은 지(봉)']],
         spark: ['day', 30, '30일'], sortKey: 's_rr', sortDir: 'desc',
         test() { return null; },
@@ -5612,13 +5628,57 @@ const SCREEN_PRESETS = [
         id: 'zone_sell', title: '수요 구역 목표 · 깨짐 팔기', icon: 'bi-box-arrow-down', ruleOnly: true,
         desc: (p) => '봇이 산 코인이 목표(치솟은 뒤 최고가)에 닿으면 팔고, 산 값이 들어 있던 수요 구역의 아랫선 아래로 내려오면 팝니다' + (Number(p.trend) ? ' · 상승 추세가 꺾여도 팝니다' : '') + ' (큰 손절은 봇 안전장치로)',
         params: [
-            { key: 'impulse', label: '치솟음', unit: '% 이상', value: 3, min: 1, max: 30, step: 0.5 },
-            { key: 'quiet', label: '직전 조용한 봉', unit: '봉', value: 6, min: 2, max: 30 },
-            { key: 'expire', label: '구역 유효', unit: '봉', value: 150, min: 10, max: 199 },
-            { key: 'band', label: '윗선 여유', unit: '%', value: 0.5, min: 0, max: 5, step: 0.1 },
-            { key: 'trend', label: '추세 꺾이면 팔기', unit: '(1 = 예)', value: 0, min: 0, max: 1 },
-            { key: 'k', label: '흔들림 폭', unit: '봉', value: 5, min: 2, max: 20 },
+            // 구역을 찾는 숫자는 매수 칸의 '수요 구역 되돌림 사기'와 같아야 같은 구역을 찾음 → 사기가 있으면 숨기고 자동으로 맞춤 (syncZonePair)
+            { key: 'impulse', label: '치솟음', unit: '% 이상', value: 3, min: 1, max: 30, step: 0.5, show: () => !ruleHas('buy', 'zone_buy'), help: () => ZONE_SAME_HELP },
+            { key: 'quiet', label: '직전 조용한 봉', unit: '봉', value: 6, min: 2, max: 30, show: () => !ruleHas('buy', 'zone_buy'), help: () => ZONE_SAME_HELP },
+            { key: 'expire', label: '구역 유효', unit: '봉', value: 150, min: 10, max: 199, show: () => !ruleHas('buy', 'zone_buy'), help: () => ZONE_SAME_HELP },
+            { key: 'band', label: '윗선 여유', unit: '%', value: 0, min: 0, max: 5, step: 0.1, show: () => !ruleHas('buy', 'zone_buy'), help: () => ZONE_SAME_HELP },
+            { key: 'trend', label: '추세가 꺾이면 팔기', value: 0, choices: [[0, '아니오'], [1, '예']],
+              help: '예: 고점 · 저점이 낮아지기 시작해도 팝니다' },
+            { key: 'k', label: '흔들림 폭', unit: '봉', value: 5, min: 2, max: 20, show: (p) => Number(p.trend) === 1,
+              help: '추세를 볼 때 고점 · 저점을 좌우 몇 봉 안에서 찾을지입니다. 늘리면 큰 흐름만 봅니다.' },
         ],
+        tfShow: () => !ruleHas('buy', 'zone_buy'),
+        tfDefault: '1h',
+        editorNote: () => (ruleHas('buy', 'zone_buy') ? '구역 숫자는 사기 쪽과 자동으로 같게 맞춥니다' : ''),
+        columns: [['s_why', '판 이유'], ['s_target', '목표'], ['s_gain', '산 값 대비']],
+        spark: ['day', 30, '30일'], sortKey: 's_gain', sortDir: 'asc',
+        test() { return null; },
+    },
+    // 하루 매매 전략 한 쌍 — 봇 규칙 전용 (계산은 서버 bot_core/strategy_tc.py, 2026-10-22). 유튜브 The Trading Channel 568만 조회
+    {
+        id: 'tc_buy', title: '하루 매매 전략 사기 (위 봉 추세 · 뚫린 고점 · 쌍바닥)', icon: 'bi-bar-chart-steps', ruleOnly: true, tfDefault: '5m',
+        desc: (p) => `${TC_TF_NAME[tcTf(p)]}로 사고팔고 ${TC_TF_NAME[TC_HTF[tcTf(p)]]}로 큰 흐름을 봅니다. 위 봉이 오르는 중일 때 마지막으로 뚫린 고점 구역으로 되돌아오면, 거래 봉에서 쌍바닥 뒤 양봉에 삽니다`,
+        params: [
+            { key: 'tf', label: '사고파는 봉', value: '5m', pair: 'htf', choices: [['5m', '5분 (위 15분)'], ['15m', '15분 (위 1시간)'], ['1h', '1시간 (위 4시간)'], ['4h', '4시간 (위 일봉)']],
+              help: '영상은 5분봉으로 사고팔고 한 단계 위 15분봉으로 큰 흐름을 봅니다' },
+            { key: 'htf', label: '위 봉', value: '15m', show: () => false },
+            { key: 'trend', label: '위 봉이 오르는 중일 때만', value: 1, choices: [[0, '아니오'], [1, '예']], help: '영상의 첫 단계입니다' },
+            { key: 'stop_atr', label: '손절 여유', unit: 'ATR 배', value: 1, min: 0, max: 3, step: 0.5, help: '쌍바닥 가장 낮은 곳보다 평소 움직임(ATR)의 몇 배 더 아래에 손절할지 — 영상은 1배' },
+            { key: 'k_htf', label: '위 봉 흔들림 폭', unit: '봉', value: 5, min: 2, max: 12, show: () => false },
+            { key: 'k_ltf', label: '거래 봉 흔들림 폭', unit: '봉', value: 2, min: 1, max: 5, show: () => false },
+            { key: 'zpad', label: '구역 여유', unit: '배', value: 0.25, min: 0, max: 1, step: 0.05, show: () => false },
+            { key: 'max_wait', label: '양봉 기다리는 봉', unit: '봉', value: 6, min: 1, max: 20, show: () => false },
+        ],
+        editorNote: () => '흔들림 폭 · 구역 여유 같은 나머지 숫자는 영상 규칙을 숫자로 옮긴 값으로 고정했습니다',
+        columns: [['s_rr', '손익비'], ['s_up', '목표까지 %'], ['s_down', '손절까지 %']],
+        spark: ['day', 30, '30일'], sortKey: 's_rr', sortDir: 'desc',
+        test() { return null; },
+    },
+    {
+        id: 'tc_sell', title: '하루 매매 전략 팔기 (쌍바닥 아래 손절 · 직전 고점 익절)', icon: 'bi-bar-chart-steps', ruleOnly: true, tfDefault: '5m',
+        desc: () => '봇이 산 코인이 위 봉의 직전 고점에 닿으면 팔고, 쌍바닥 가장 낮은 곳 − ATR 아래로 내려가면 팝니다',
+        params: [
+            { key: 'tf', label: '사고파는 봉', value: '5m', pair: 'htf', choices: [['5m', '5분 (위 15분)'], ['15m', '15분 (위 1시간)'], ['1h', '1시간 (위 4시간)'], ['4h', '4시간 (위 일봉)']],
+              show: () => !ruleHas('buy', 'tc_buy'), help: '매수 칸의 하루 매매 전략 사기와 같게 두십시오' },
+            { key: 'htf', label: '위 봉', value: '15m', show: () => false },
+            { key: 'stop_atr', label: '손절 여유', unit: 'ATR 배', value: 1, min: 0, max: 3, step: 0.5, show: () => !ruleHas('buy', 'tc_buy') },
+            { key: 'k_htf', label: '위 봉 흔들림 폭', unit: '봉', value: 5, min: 2, max: 12, show: () => false },
+            { key: 'k_ltf', label: '거래 봉 흔들림 폭', unit: '봉', value: 2, min: 1, max: 5, show: () => false },
+            { key: 'zpad', label: '구역 여유', unit: '배', value: 0.25, min: 0, max: 1, step: 0.05, show: () => false },
+            { key: 'max_wait', label: '양봉 기다리는 봉', unit: '봉', value: 6, min: 1, max: 20, show: () => false },
+        ],
+        editorNote: () => (ruleHas('buy', 'tc_buy') ? '숫자는 사기 쪽과 자동으로 같게 맞춥니다 — 여기서 바꿀 것은 없습니다' : ''),
         columns: [['s_why', '판 이유'], ['s_target', '목표'], ['s_gain', '산 값 대비']],
         spark: ['day', 30, '30일'], sortKey: 's_gain', sortDir: 'asc',
         test() { return null; },
@@ -10949,6 +11009,14 @@ function setupRuleBuilder() {
     card.addEventListener('click', (e) => {
         const setM = e.target.closest('[data-set-match]');
         if (setM) { setRuleMatch(setM.dataset.setMatch, setM.dataset.match); return; }
+        const choice = e.target.closest('[data-rule-choice]');
+        if (choice) {   // 규칙 숫자의 고르기 칸 (수요 구역 '사는 때')
+            const chip = choice.closest('[data-rule-id]');
+            const raw = choice.dataset.v, val = /^-?\d+(\.\d+)?$/.test(raw) ? Number(raw) : raw;   // 숫자 또는 봉 이름('5m')
+            setRuleParams(chip.dataset.from, chip.dataset.ruleId, { [choice.dataset.ruleChoice]: val, ...(choice.dataset.pairKey ? { [choice.dataset.pairKey]: choice.dataset.pairV } : {}) });
+            renderBotRuleSelects();
+            return;
+        }
         const tog = e.target.closest('[data-toggle-match]');
         if (tog) { setRuleMatch(tog.dataset.toggleMatch, ruleMatch(tog.dataset.toggleMatch) === 'all' ? 'any' : 'all'); return; }
         const mv = e.target.closest('[data-move-target]');
@@ -10990,6 +11058,11 @@ function setupRuleBuilder() {
         const rule = ruleList(chip.dataset.from).find(r => r.id === chip.dataset.ruleId);
         const desc = chip.querySelector('.rule-desc');
         if (preset && rule && desc) desc.textContent = condDesc(preset, ruleParams(preset, rule));
+        const zp = chip.querySelector('.zone-pic');
+        if (preset && rule && zp) zp.outerHTML = zoneEditorPic(ruleParams(preset, rule));
+        const zc = chip.querySelector('.zone-card');
+        const cardFn = { zone_buy: zoneBuyCardHtml, zone_sell: zoneSellCardHtml, tc_buy: tcBuyCardHtml, tc_sell: tcSellCardHtml }[chip.dataset.ruleId];
+        if (preset && rule && zc && cardFn) zc.outerHTML = cardFn(ruleParams(preset, rule));
         // '기본값으로' 단추: 펼칠 때 한 번만 정하지 않고 값을 바꿀 때마다 다시 (기본과 다르면 누를 수 있게)
         const reset = chip.querySelector('[data-reset-rule]');
         if (preset && rule && reset) {
@@ -11358,6 +11431,11 @@ function renderBotRuleSelects() {
                     : condDesc(preset, p);
             const bt = chip.querySelector('.basis-tag');
             if (bt) bt.outerHTML = basisTagHtml(preset, p);
+            const card = { zone_buy: zoneBuyCardHtml, zone_sell: zoneSellCardHtml, tc_buy: tcBuyCardHtml, tc_sell: tcSellCardHtml }[preset.id];
+            if (card) {   // 전략 한 쌍(수요 구역 · 하루 매매 전략): 긴 글 대신 단계 카드 + 그림 (2026-10-22)
+                chip.querySelector('.rule-desc')?.remove();
+                chip.insertAdjacentHTML('beforeend', card(p));
+            }
             if (side === 'sell' && !isPartialSet(r) && ruleHas('buy', preset.id)) {
                 // 같은 조건이 매수 칸에도 있으면: 사자마자 '팔 조건'에도 맞아 곧바로 팔림
                 chip.insertAdjacentHTML('beforeend', `<div class="rule-startbuy is-warn"><i class="bi bi-exclamation-triangle-fill"></i><b>매수 칸에도 있는 조건</b>이라 봇이 산 코인을 곧바로 팝니다. 둘 중 한 칸에서 빼 주십시오.</div>`);
@@ -11495,7 +11573,7 @@ document.addEventListener('click', (e) => {
 });
 
 // 규칙을 바꾸면 바로 저장하지 않고 '적용 전 변경'으로 둠 → 아래 [적용하기]를 누르면 미리 보기 뒤 봇에 반영
-function saveBotRules() { markDraft(); }
+function saveBotRules() { syncZonePair(); markDraft(); }
 async function putBotRules(rules) {
     if (!currentBotId) return false;
     try {
@@ -11983,7 +12061,9 @@ document.addEventListener('input', (e) => {
 const ruleEditorsOpen = new Set();   // 숫자 칸을 펼친 조건 'buy|rsi_low'
 
 function presetDefaults(preset) {
-    return Object.fromEntries((preset.params || []).map(q => [q.key, q.value]));
+    const d = Object.fromEntries((preset.params || []).map(q => [q.key, q.value]));
+    if (preset.tfDefault) d.tf = preset.tfDefault;
+    return d;
 }
 function ruleParams(preset, rule) {
     return { ...presetDefaults(preset), ...(rule?.params || {}) };
@@ -12127,22 +12207,42 @@ function sliderRowHtml(g, p, preset, esc) {
     const end = (v, x) => `${Number(v).toLocaleString()}${esc(x.short)}`;
     return `<div class="rule-param rps">
         <div class="rps-head"><span class="rule-param-label">${esc(g[0].label)}</span><span class="rps-value"></span><span class="rule-param-fields rps-inputs">${inputs}</span></div>
+        ${g.length === 1 ? paramHelpHtml(g[0], p, esc, preset) : ''}
         <div class="rps-track${parts.length === 2 ? ' is-dual' : ''}">${ranges}</div>
         <div class="rps-ends"><span>최소 ${end(min, parts[0])}</span><span>최대 ${end(max, parts[parts.length - 1])}</span></div>
     </div>`;
 }
+// 고르기 칸 (choices: [[값, 이름], …]) — 봉 단추와 같은 모양, 값은 숫자로 저장
+function choiceRowHtml(q, p, esc, preset) {
+    const on = (v) => String(p[q.key]) === String(v);
+    const pair = (v) => (q.pair && TC_HTF[v] ? ` data-pair-key="${q.pair}" data-pair-v="${TC_HTF[v]}"` : '');
+    return `<div class="rule-param rps-choice"><span class="rule-param-label">${esc(q.label)}</span><span class="rule-param-fields"><span class="tf-seg" role="group" aria-label="${esc(q.label)}">${q.choices.map(([v, t]) =>
+        `<button type="button" class="${on(v) ? 'active' : ''}" data-rule-choice="${q.key}" data-v="${v}"${pair(v)} aria-pressed="${on(v)}">${esc(t)}${preset?.verified && v === q.value ? ' <small>검증값</small>' : ''}</button>`).join('')}</span></span>${paramHelpHtml(q, p, esc, null)}</div>`;
+}
+// 숫자 칸 아래 한 줄 설명 + (검증한 프리셋이면) 검증값 · 다르면 '검증값으로' 단추
+function paramHelpHtml(q, p, esc, preset) {
+    const help = typeof q.help === 'function' ? q.help(p) : q.help;
+    const off = preset?.verified && Number(p[q.key]) !== Number(q.value);
+    const rec = preset?.verified ? ` <span class="rps-rec">검증값 ${esc(q.value)}${esc(String(q.unit || '').replace(/\s*(이상|이하)$/, ''))}</span>${off ? ` <button type="button" class="rps-rec-btn" data-rule-choice="${q.key}" data-v="${q.value}">검증값으로</button>` : ''}` : '';
+    return help || rec ? `<div class="rps-help">${help ? esc(help) : ''}${rec}</div>` : '';
+}
 function ruleEditorHtml(preset, p) {
     const esc = (t) => String(t ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    if (preset.id === 'zone_buy') return zoneEditorHtml(preset, p, esc);   // 번호 붙은 그림 + 같은 번호 숫자 칸 (2026-10-22)
     const groups = [];
     for (const q of preset.params) {
+        if (q.show && !q.show(p)) continue;                 // 다른 칸 값에 따라 숨김 (예: '더 내려오면'일 때만 내려오는 폭)
         const last = groups[groups.length - 1];
-        if (last && (!q.label || (last.length === 1 && last[0].label === q.label))) last.push(q);
+        if (last && !q.choices && !last[0].choices && (!q.label || (last.length === 1 && last[0].label === q.label))) last.push(q);
         else groups.push([q]);
     }
     const changed = preset.params.some(q => Number(p[q.key]) !== Number(q.value)) || tfOf(p) !== 'day';
-    const tfRow = TF_PRESETS.has(preset.id)
+    const tfRow = TF_PRESETS.has(preset.id) && (!preset.tfShow || preset.tfShow())
         ? `<div class="rule-param"><span class="rule-param-label">봉</span><span class="rule-param-fields">${tfSegHtml(tfOf(p), 'data-rule-tf')}</span></div>` : '';
-    const rows = tfRow + groups.map(g => g.length <= 2 ? sliderRowHtml(g, p, preset, esc) : `<div class="rule-param">
+    const note = preset.editorNote?.(p) || '';
+    const top = (note ? `<div class="rule-editor-note"><i class="bi bi-link-45deg"></i>${esc(note)}</div>` : '')
+        + (preset.verified ? `<div class="rule-editor-note is-verified"><i class="bi bi-patch-check-fill"></i>${esc(preset.verified)}</div>` : '');
+    const rows = top + tfRow + groups.map(g => g[0].choices ? choiceRowHtml(g[0], p, esc, preset) : g.length <= 2 ? sliderRowHtml(g, p, preset, esc) : `<div class="rule-param">
         <span class="rule-param-label">${esc(g[0].label)}</span>
         <span class="rule-param-fields">${g.map((q, i) => `${i ? '<span class="rule-param-sep">~</span>' : ''}
             <input type="number" class="form-control form-control-sm" data-rule-param="${q.key}" value="${p[q.key]}"
@@ -12404,7 +12504,7 @@ document.addEventListener('click', (e) => {
     const r = ruleList(side).find(x => x.id === id);
     if (!r) return;
     const params = { ...(r.params || {}) };
-    if (tf === 'day') delete params.tf; else params.tf = tf;
+    if (tf === 'day' && !SCREEN_PRESETS.find(x => x.id === id)?.tfDefault) delete params.tf; else params.tf = tf;
     botRules[side] = ruleList(side).map(x => (x.id === id ? { ...x, params } : x));
     saveBotRules();
     if (tf !== 'day') ensureTfBars(tf);
@@ -13995,9 +14095,13 @@ const NEW_BOT_TEMPLATES = [
     { key: 'dip', title: '떨어진 코인 싸게 사기', desc: '거래 많은 큰 코인 중 많이 떨어진 코인을 사서, 다시 오르면 팝니다.', style: 'aggressive',
       spec: { trade_rules: { target: [{ id: 'value_top', params: { top: 50 } }], buy: [{ id: 'bb_lower', params: { days: 20, k: 2 } }], sell: [{ id: 'bb_upper', params: { days: 20, k: 2 } }] },
               risk_config: { position_size_percent: 10, max_positions: 10, stop_loss_percent: 15, take_profit_percent: 30, trailing_stop_percent: 0 } } },
-    { key: 'zone', title: '수요 구역 되돌림', desc: '거래 많은 코인 100개를 1시간봉으로 지켜보다가, 치솟기 전 자리로 되돌아오면 사고 치솟은 뒤 최고가에 닿거나 그 자리가 깨지면 팝니다 (손절 2 · 익절 6). 검증에서는 되돌아온 순간 바로 사야 거래당 +0.5%, 코인당 1년 4번꼴이었습니다.', style: 'aggressive',
-      spec: { trade_rules: { target: [{ id: 'value_top', params: { top: 100 } }], buy: [{ id: 'zone_buy', params: { tf: '1h', impulse: 3, quiet: 6, expire: 150, band: 0.5, rr: 2.5, trend: 0, k: 5 } }], sell: [{ id: 'zone_sell', params: { tf: '1h', impulse: 3, quiet: 6, expire: 150, band: 0.5, trend: 0, k: 5 } }] },
-              risk_config: { position_size_percent: 20, max_positions: 5, stop_loss_percent: 2, take_profit_percent: 6, trailing_stop_percent: 0 } } },
+    { key: 'zone', title: '수요 구역 되돌림', desc: '유튜브 TradingLab 영상 규칙 그대로입니다. 거래 많은 코인 100개를 1시간봉으로 지켜보다가, 상승 추세에서 치솟기 전 자리(수요 구역)로 처음 되돌아오면 사고, 구역 바로 아래로 내려가면 손절 · 치솟은 뒤 최고가에 닿으면 익절합니다 (손익비 2.5 이상만). 검증에서는 되돌아온 순간 바로 사야 거래당 +0.5%, 코인당 1년 4번꼴이었습니다.', style: 'aggressive',
+      // 2026-10-22 영상과 같게: 상승 추세에서만 · 손절 / 익절은 구역 규칙만 (봇 안전장치 손절 · 익절 % 는 영상에 없어 0)
+      spec: { trade_rules: { target: [{ id: 'value_top', params: { top: 100 } }], buy: [{ id: 'zone_buy', params: { tf: '1h', entry: 0, depth: 0.2, impulse: 3, quiet: 6, expire: 150, band: 0, rr: 2.5, trend: 1, k: 5 } }], sell: [{ id: 'zone_sell', params: { tf: '1h', impulse: 3, quiet: 6, expire: 150, band: 0, trend: 0, k: 5 } }] },
+              risk_config: { position_size_percent: 20, max_positions: 5, stop_loss_percent: 0, take_profit_percent: 0, trailing_stop_percent: 0 } } },
+    { key: 'tcday', title: '하루 매매 전략 (유튜브 568만)', desc: '유튜브 The Trading Channel 영상 규칙 그대로입니다. 거래 많은 코인 20개를 5분봉으로 사고팔고 15분봉으로 큰 흐름을 봅니다. 15분봉이 오르는 중일 때 마지막으로 뚫린 고점으로 되돌아오면 쌍바닥 뒤 양봉에 사고, 쌍바닥 아래 − ATR 에 손절 · 15분봉 직전 고점에 익절합니다. 검증에서는 아무 때나 산 것과 구분되지 않았습니다 — 시뮬레이션으로 비교해 보십시오.', style: 'aggressive',
+      spec: { trade_rules: { target: [{ id: 'value_top', params: { top: 20 } }], buy: [{ id: 'tc_buy', params: { tf: '5m', htf: '15m', k_htf: 5, k_ltf: 2, zpad: 0.25, max_wait: 6, stop_atr: 1, trend: 1 } }], sell: [{ id: 'tc_sell', params: { tf: '5m', htf: '15m', k_htf: 5, k_ltf: 2, zpad: 0.25, max_wait: 6, stop_atr: 1 } }] },
+              risk_config: { position_size_percent: 20, max_positions: 5, stop_loss_percent: 0, take_profit_percent: 0, trailing_stop_percent: 0 } } },
     { key: 'copy', title: '내 봇 복사해서 시작', desc: '지금 있는 봇의 규칙 · 안전장치를 그대로 가져와 새 봇으로 만듭니다.', style: '' },
     { key: 'blank', title: '빈 봇 · 직접 만들기', desc: '조건 없이 만들고, 만든 뒤 매매대상 · 매수 · 매도 조건을 직접 끌어 놓습니다.', style: '' },
 ];
@@ -14451,6 +14555,243 @@ function sellModeHtml(r) {
             <span class="pbn-more">자세히 보기 <i class="bi bi-question-circle"></i></span>
         </button>
         <div class="proof-mini">과거 기록이며 앞으로를 뜻하지 않습니다 · 처음엔 시뮬레이션으로 지켜보십시오 · <a href="#" data-open-verify>캔들차트로 직접 보기</a></div>
+    </div>`;
+}
+
+// 수요 구역 팔기 숫자 칸 설명 (매수 칸에 사기가 없을 때만 보임)
+const ZONE_SAME_HELP = "매수 칸 '수요 구역 되돌림 사기'의 같은 숫자와 같게 두십시오. 다르면 산 구역을 찾지 못해 목표 · 깨짐으로 팔지 못합니다.";
+// 봉 수 → 대략의 시간 (구역 유효 설명용)
+function zoneBarsSpan(p, n) {
+    const h = n * ({ '1h': 1, '4h': 4 }[tfOf(p)] || 24);
+    return h < 48 ? `약 ${h}시간` : `약 ${Math.round(h / 24)}일`;
+}
+// 수요 구역 팔기는 사기와 같은 구역을 찾아야 하므로, 둘 다 있으면 팔기의 구역 숫자를 사기에 맞춤 (2026-10-22)
+const ZONE_SHARED = ['tf', 'impulse', 'quiet', 'expire', 'band'];
+const RULE_PAIRS = [['zone_buy', 'zone_sell', ZONE_SHARED], ['tc_buy', 'tc_sell', ['tf', 'htf', 'k_htf', 'k_ltf', 'zpad', 'max_wait', 'stop_atr']]];   // 사기 숫자를 팔기에 맞춤
+function syncZonePair() {
+    for (const [bid, sid, keys] of RULE_PAIRS) {
+        const buy = ruleList('buy').find(r => r.id === bid), sell = ruleList('sell').find(r => r.id === sid);
+        if (!buy || !sell) continue;
+        const bp = buy.params || {}, sp = { ...(sell.params || {}) };
+        let changed = false;
+        for (const k of keys) {
+            if (bp[k] === undefined) { if (k in sp) { delete sp[k]; changed = true; } }
+            else if (sp[k] !== bp[k]) { sp[k] = bp[k]; changed = true; }
+        }
+        if (changed) botRules.sell = ruleList('sell').map(r => (r === sell ? { ...r, params: sp } : r));
+    }
+}
+
+// ── 수요 구역 사기 설정: 글 대신 '번호 붙은 그림' + 같은 번호의 숫자 칸 (2026-10-22) ──
+// 그림 속 ①~⑤ 가 아래 숫자 칸 ①~⑤ 와 짝. 숫자를 바꾸면 그림 속 글자도 바로 바뀜 (입력 처리기에서 .zone-pic 을 다시 그림)
+function zoneEditorPic(p) {
+    const e = Number(p.entry) || 0, band = Number(p.band) || 0, depth = Number(p.depth) || 0.2;
+    const X = (i) => 30 + i * 26, TOP = 142, LOW = 156, PEAK = 36, STOP = 160;
+    // [시가 y, 종가 y, 고가 y, 저가 y] — 위로 갈수록 비쌈 (y 작음)
+    const C = [[150, 146, 144, 153], [146, 151, 143, 153], [151, 147, 145, 154], [147, 152, 145, 154], [152, 148, 146, 155], [148, 145, TOP, LOW],
+        [145, 88, 84, 147], [88, 70, 66, 90], [70, 56, 52, 72], [56, 44, 40, 58], [44, 40, PEAK, 46],
+        [42, 60, 38, 62], [60, 84, 58, 86], [84, 110, 82, 112], [110, 132, 108, 134], [132, 138, 128, e === 1 ? TOP + 5 : TOP],
+        [138, 120, 116, 140], [120, 100, 96, 122], [100, 80, 76, 102], [80, 64, 60, 82]];
+    const candle = ([o, c, h, l], i) => {
+        const up = c < o, x = X(i);
+        return `<line x1="${x}" y1="${h}" x2="${x}" y2="${l}" class="${up ? 'zp-up' : 'zp-dn'}" stroke-width="1.4"/>`
+            + `<rect x="${x - 7}" y="${Math.min(o, c)}" width="14" height="${Math.max(2, Math.abs(o - c))}" rx="2" class="${up ? 'zp-upf' : 'zp-dnf'}"/>`;
+    };
+    const buy = e === 2 ? [X(16), 138] : [X(15), e === 1 ? TOP + 5 : TOP];
+    const span = zoneBarsSpan(p, Number(p.expire) || 150);
+    const buyT = ['닿는 순간 삼', `${depth}% 더 내려와 삼`, '봉이 끝난 뒤 삼'][e] || '';
+    return `<svg class="zone-pic" viewBox="0 0 640 214" role="img" aria-label="수요 구역 설정 그림">
+        <rect x="${X(5) - 9}" y="${TOP}" width="${600 - X(5) + 9}" height="${LOW - TOP}" class="zp-zone"/>
+        <line x1="${X(5) - 9}" y1="${TOP}" x2="600" y2="${TOP}" class="zp-top"/>
+        ${band > 0 ? `<rect x="${X(5) - 9}" y="${TOP - 6}" width="${600 - X(5) + 9}" height="6" class="zp-band"/><text x="598" y="${TOP - 9}" class="zp-t zp-band-t" text-anchor="end">윗선 여유 +${band}%</text>` : ''}
+        <line x1="${X(10)}" y1="${PEAK}" x2="600" y2="${PEAK}" class="zp-tgt"/><text x="598" y="${PEAK - 5}" class="zp-t zp-tgt-t" text-anchor="end">목표 = 치솟은 뒤 최고가</text>
+        <line x1="${X(15)}" y1="${STOP}" x2="600" y2="${STOP}" class="zp-stop"/><text x="598" y="${STOP + 12}" class="zp-t zp-stop-t" text-anchor="end">손절 = 구역 아랫선</text>
+        ${C.map(candle).join('')}
+        <path d="M${X(0) - 7},128 V122 H${X(5) + 7} V128" class="zp-brk"/>
+        <text x="${(X(0) + X(5)) / 2}" y="116" class="zp-t" text-anchor="middle"><tspan class="zp-no">②</tspan> 조용한 봉 ${p.quiet}개 · 폭 ${p.impulse}% 안</text>
+        <text x="${X(6) + 12}" y="112" class="zp-t"><tspan class="zp-no">①</tspan> 한 봉 +${p.impulse}% 이상 치솟음</text>
+        <text x="${X(5) - 9}" y="${LOW + 13}" class="zp-t zp-zone-t">수요 구역 (치솟기 바로 앞 봉)</text>
+        <line x1="${X(5) - 9}" y1="196" x2="600" y2="196" class="zp-arr"/><path d="M594,192 L600,196 L594,200" class="zp-arr"/>
+        <text x="${(X(5) + 600) / 2}" y="210" class="zp-t" text-anchor="middle"><tspan class="zp-no">③</tspan> ${p.expire}봉(${span}) 지나면 이 구역은 버림</text>
+        ${e === 2 ? `<line x1="${(X(15) + X(16)) / 2}" y1="90" x2="${(X(15) + X(16)) / 2}" y2="${LOW + 10}" class="zp-bar"/><text x="${(X(15) + X(16)) / 2}" y="86" class="zp-t zp-mut" text-anchor="middle">봉 끝</text>` : ''}
+        <circle cx="${buy[0]}" cy="${buy[1]}" r="6" class="zp-buy"/>
+        <text x="${buy[0] - 10}" y="${LOW + 26}" class="zp-t zp-buy-t" text-anchor="end"><tspan class="zp-no">④</tspan> ${buyT}</text>
+        <rect x="618" y="${PEAK}" width="9" height="${TOP - PEAK}" rx="2" class="zp-upf"/><rect x="618" y="${TOP}" width="9" height="${STOP - TOP}" rx="2" class="zp-dnf"/>
+        <text x="612" y="92" class="zp-t" text-anchor="end"><tspan class="zp-no">⑤</tspan> 오를 폭이</text>
+        <text x="612" y="106" class="zp-t" text-anchor="end">내릴 폭의 ${p.rr}배 이상</text>
+    </svg>`;
+}
+function zoneEditorHtml(preset, p, esc) {
+    const q = (k) => preset.params.find(x => x.key === k);
+    const num = (no, k, name) => {
+        const d = q(k), off = Number(p[k]) !== Number(d.value);
+        const tip = typeof d.help === 'function' ? d.help(p) : d.help;
+        return `<label class="zp-row" title="${esc(tip || '')}"><span class="zp-badge">${no}</span><span class="zp-name">${esc(name)}</span>
+            <input type="number" class="form-control form-control-sm" data-rule-param="${k}" value="${p[k]}" step="${d.step || 1}" min="${d.min}" max="${d.max}" aria-label="${esc(name)}">
+            <span class="zp-unit">${esc(d.unit || '')}</span>${off ? `<button type="button" class="zp-rec is-off" data-rule-choice="${k}" data-v="${d.value}" title="검증한 값으로 되돌리기">검증 ${d.value}로</button>` : '<span class="zp-rec">검증값</span>'}</label>`;
+    };
+    const seg = (k, list) => `<span class="tf-seg" role="group">${list.map(([v, t]) => `<button type="button" class="${Number(p[k]) === v ? 'active' : ''}" data-rule-choice="${k}" data-v="${v}" aria-pressed="${Number(p[k]) === v}">${esc(t)}</button>`).join('')}</span>`;
+    const changed = preset.params.some(x => Number(p[x.key]) !== Number(x.value)) || tfOf(p) !== '1h';
+    return `<div class="rule-editor zone-editor">
+        <div class="zp-head"><span class="zp-name">봉</span>${tfSegHtml(tfOf(p), 'data-rule-tf')}<span class="zp-legend"><b>초록 = 검증한 값</b> · 잘 모르면 그대로 두십시오</span></div>
+        ${zoneEditorPic(p)}
+        <div class="zp-grid">
+            ${num('①', 'impulse', '치솟음')}
+            ${num('②', 'quiet', '조용한 봉')}
+            ${num('③', 'expire', '구역 유효')}
+            ${num('⑤', 'rr', '손익비')}
+            <div class="zp-row is-wide"><span class="zp-badge">④</span><span class="zp-name">사는 때</span>${seg('entry', [[0, '닿는 순간'], [1, '더 내려오면'], [2, '봉이 끝난 뒤']])}
+                ${Number(p.entry) === 1 ? `<span class="zp-sub">윗선보다 <input type="number" class="form-control form-control-sm" data-rule-param="depth" value="${p.depth}" step="0.05" min="0.05" max="3" aria-label="더 내려오는 폭">% 더</span>` : ''}
+                ${Number(p.entry) === 0 ? `<span class="zp-sub">윗선 여유 <input type="number" class="form-control form-control-sm" data-rule-param="band" value="${p.band}" step="0.1" min="0" max="5" aria-label="윗선 여유">%${Number(p.band) ? ' <button type="button" class="zp-rec is-off" data-rule-choice="band" data-v="0">검증 0으로</button>' : ''}</span>` : ''}</div>
+            <div class="zp-row is-wide"><span class="zp-badge zp-badge-x">+</span><span class="zp-name">상승 추세일 때만</span>${seg('trend', [[0, '아니오'], [1, '예']])}
+                ${Number(p.trend) === 1 ? `<span class="zp-sub">흔들림 폭 <input type="number" class="form-control form-control-sm" data-rule-param="k" value="${p.k}" step="1" min="2" max="20" aria-label="흔들림 폭">봉</span>` : ''}</div>
+        </div>
+        <div class="rule-editor-foot"><span>봇 전용 숫자입니다 (분석 화면의 조건 검색과 따로 저장)</span>
+            <button type="button" class="btn btn-sm btn-link p-0" data-reset-rule ${changed ? '' : 'disabled'}>검증값으로 모두 되돌리기</button></div>
+    </div>`;
+}
+
+// ── 수요 구역 되돌림: 긴 글 대신 단계 카드 + 그림 + 검증 (2026-10-22) — 사는 때는 카드에서 바로 고름 ──
+// 검증: StraHub lab zone_retest_v2 (업비트 원화 245코인 · 1시간봉 · 2022-01 ~ 2026-10, 블로그 16편 · 영상 demand_zone_v2)
+const ZONE_PROOF = { touch: [0.51, 4651], 0.1: [0.29, 4375], 0.2: [0.24, 4285], 0.5: [0.03, 3771], close: [-0.08, 3796], ctrl: -0.01 };
+const ZONE_BLOG = 'https://app.strahub.com/blog/demand-zone-retest?ref=strabot-rule';
+const zoneSigned = (v) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(2)}%`;
+function zoneProof(p) {
+    const e = Number(p.entry) || 0, d = Number(p.depth) || 0.2;
+    if (e === 2) return { v: ZONE_PROOF.close[0], n: ZONE_PROOF.close[1], what: '닿은 봉이 끝난 뒤' };
+    if (e === 1) {
+        const k = [0.1, 0.2, 0.5].reduce((a, b) => (Math.abs(b - d) < Math.abs(a - d) ? b : a));
+        return { v: ZONE_PROOF[k][0], n: ZONE_PROOF[k][1], what: `${k}% 더 내려와서` };
+    }
+    return { v: ZONE_PROOF.touch[0], n: ZONE_PROOF.touch[1], what: '닿는 순간' };
+}
+function zoneBuyCardHtml(p) {
+    const e = Number(p.entry) || 0, band = Number(p.band) || 0, pr = zoneProof(p);
+    // 영상(TradingLab) 규칙과 다른 곳 — 같으면 '영상 규칙 그대로' 표시 (2026-10-22)
+    const diff = [Number(p.trend) !== 1 && '상승 추세 조건 끔', e !== 0 && '닿는 순간에 사지 않음', band > 0 && `윗선보다 ${band}% 비싸게도 삼`, Number(p.rr) !== 2.5 && `손익비 ${p.rr}배`].filter(Boolean);
+    const same = diff.length ? `<span class="zc-video is-diff" title="영상: 상승 추세에서만 · 구역에 닿으면 · 손익비 2.5"><i class="bi bi-exclamation-circle"></i> 영상과 다름: ${diff.join(' · ')}</span>`
+        : '<span class="zc-video"><i class="bi bi-youtube"></i> 영상 규칙 그대로</span>';
+    const opts = [[0, '닿는 순간', ZONE_PROOF.touch[0]], [1, '더 내려오면', zoneProof({ entry: 1, depth: p.depth }).v], [2, '봉이 끝난 뒤', ZONE_PROOF.close[0]]];
+    const step3 = e === 1 ? `윗선보다<br><em>${p.depth}%</em> 더 내려오면` : e === 2 ? '닿은 봉이 끝난 뒤<br>그다음 가격에'
+        : band ? `윗선 +${band}% 안으로<br>내려오는 순간` : '구역 윗선에<br>닿는 순간';
+    return `<div class="sell-mode zone-card" draggable="false">
+        <div class="sell-mode-head">사는 때 <small>검증 거래당 평균</small>${same}</div>
+        <div class="sell-mode-options" role="group" aria-label="사는 때">${opts.map(([v, t, x]) =>
+            `<button type="button" class="${e === v ? 'active' : ''}" data-rule-choice="entry" data-v="${v}" aria-pressed="${e === v}">${t} <span class="zc-tag ${x > 0 ? 'is-up' : 'is-dn'}">${zoneSigned(x)}</span></button>`).join('')}</div>
+        <div class="sm-flow">
+            <div class="sm-step"><span class="sm-no">1</span><span class="sm-ico">😴</span><b>조용히 머묾</b><small>직전 ${p.quiet}봉이<br>${p.impulse}% 폭 안</small></div>
+            <i class="bi bi-arrow-right sm-arrow"></i>
+            <div class="sm-step is-zone"><span class="sm-no">2</span><span class="sm-ico">🚀</span><b>치솟음</b><small>한 봉이 +${p.impulse}% 이상<br>바로 앞 봉 = <em class="zc-zone">수요 구역</em></small></div>
+            <i class="bi bi-arrow-right sm-arrow"></i>
+            <div class="sm-step is-buy"><span class="sm-no">3</span><span class="sm-ico">🛒</span><b>되돌아오면 삼</b><small>${step3}</small></div>
+            <i class="bi bi-arrow-right sm-arrow"></i>
+            <div class="sm-step is-done"><span class="sm-no">4</span><span class="sm-ico">⚖️</span><b>손익비 확인</b><small>목표까지가 손절까지의<br><em>${p.rr}배</em> 이상일 때만</small></div>
+        </div>
+        ${zoneSketchSvg(e, p.depth)}
+        <div class="sm-foot"><i class="bi bi-clock-history"></i>${TF_LABEL[tfOf(p)] || '일봉'} 기준 · 종가가 구역 아래로 내려가거나 ${p.expire}봉이 지나면 그 구역은 버립니다${Number(p.trend) ? ' · 고점과 저점이 높아지는 상승 추세일 때만 봅니다' : ''}. 파는 것은 매도 칸의 '수요 구역 목표 · 깨짐 팔기'가 맡습니다.</div>
+        ${e === 0 && band > 0 ? `<div class="sm-foot zc-warn"><i class="bi bi-exclamation-triangle-fill"></i>윗선보다 ${band}%까지 비싸게도 삽니다. 검증에서는 0.5% 비싸게 사면 우위가 거의 없었습니다(+0.03%). 설정의 '윗선 여유'를 0으로 하면 검증과 같습니다.</div>` : ''}
+        <a class="proof-banner${pr.v <= 0 ? ' is-neg' : ''}" href="${ZONE_BLOG}" target="_blank" rel="noopener">
+            <span class="pbn-badge"><i class="bi bi-patch-check-fill"></i> 과거 5년 검증</span>
+            <span class="pbn-num"><b>${zoneSigned(pr.v)}</b><small>거래당 평균<br>${pr.what} 산 ${pr.n.toLocaleString()}번</small></span>
+            <span class="pbn-num is-ctrl"><b>${zoneSigned(ZONE_PROOF.ctrl)}</b><small>아무 때나<br>산 대조</small></span>
+            <span class="pbn-more">자세히 보기 <i class="bi bi-box-arrow-up-right"></i></span>
+        </a>
+        <div class="proof-mini">업비트 원화 코인 245개 · 1시간봉 · 2022 ~ 2026.10 · 과거 기록이며 앞으로를 뜻하지 않습니다 · 처음엔 시뮬레이션으로 지켜보십시오</div>
+    </div>`;
+}
+// 가격 그림: 조용히 → 치솟음 → 최고가(목표) → 수요 구역으로 되돌아옴(삼) → 다시 오름. 사는 자리는 '사는 때'에 따라
+function zoneSketchSvg(e, depth) {
+    const top = 70, low = 82, dip = e === 1 ? 77 : 71;
+    const pts = [[8, 77], [16, 74], [24, 79], [32, 73], [40, 78], [48, 74], [56, 76], [64, 34], [80, 27], [96, 20], [110, 15], [126, 24], [142, 38],
+        [160, 54], [176, 66], [186, dip], [198, 60], [216, 48], [240, 38], [270, 28], [300, 21], [322, 17]];
+    const buy = e === 2 ? [205, 55] : [186, dip];
+    const lab = ['닿는 순간 삼', `${depth}% 더 내려와 삼`, '봉이 끝난 뒤 삼'][e] || '';
+    return `<svg class="sm-sketch zc-sketch" viewBox="0 0 360 112" role="img" aria-label="수요 구역으로 되돌아오면 사는 그림">
+        <rect x="52" y="${top}" width="276" height="${low - top}" class="zk-zone"/>
+        <line x1="52" y1="${top}" x2="328" y2="${top}" class="zk-top"/><line x1="52" y1="${low}" x2="328" y2="${low}" class="zk-low"/>
+        <text x="326" y="${low - 3}" class="zk-lt zk-zone-t" text-anchor="end">수요 구역</text>
+        <line x1="110" y1="15" x2="328" y2="15" class="zk-tgt"/><text x="331" y="18" class="zk-lt zk-tgt-t">목표</text>
+        <line x1="186" y1="${low + 5}" x2="328" y2="${low + 5}" class="zk-stop"/><text x="331" y="${low + 8}" class="zk-lt zk-stop-t">손절</text>
+        <path d="M${pts.map(q => q.join(',')).join(' L')}" class="sk-line"/>
+        <text x="60" y="30" class="zk-fire" text-anchor="end">🚀 치솟음</text>
+        <text x="30" y="94" class="zk-mut" text-anchor="middle">조용히</text>
+        ${e === 1 ? `<line x1="180" y1="${top}" x2="180" y2="${dip}" class="zk-gap"/><text x="177" y="${dip + 1}" class="zk-mut" text-anchor="end">${depth}%</text>` : ''}
+        ${e === 2 ? `<line x1="196" y1="40" x2="196" y2="${low + 12}" class="zk-bar"/><text x="196" y="37" class="zk-mut" text-anchor="middle">봉 끝</text>` : ''}
+        <circle cx="${buy[0]}" cy="${buy[1]}" r="5" class="zk-buy"/>
+        <text x="${buy[0]}" y="104" class="zk-buy-t" text-anchor="middle">${lab}</text>
+    </svg>`;
+}
+// ── 하루 매매 전략 (The Trading Channel, 2026-10-22): 글 대신 단계 카드 + 그림 + 검증 띠 ──
+// 검증: strahub-research lab tc_retest_db (2022-01 ~ , 5분 · 15분봉은 큰 코인 20개 2025-10 까지, 1시간 · 4시간봉은 245코인)
+const TC_HTF = { '5m': '15m', '15m': '1h', '1h': '4h', '4h': 'day' };
+const TC_TF_NAME = { '5m': '5분봉', '15m': '15분봉', '1h': '1시간봉', '4h': '4시간봉', day: '일봉' };
+// [거래, 거래당 %, 아무 때나 산 대조 %, 이긴 비율 %, 코인 수] — 봉 짝마다
+const TC_PROOF = { '5m': [19875, -0.07, -0.12, 48, 20], '15m': [5582, -0.13, -0.11, 46, 20], '1h': [12997, 0.00, -0.04, 44, 245], '4h': [1929, -0.30, -0.17, 40, 245] };
+const TC_BLOG = 'https://app.strahub.com/blog/day-trading-strategy-test?ref=strabot-rule';
+const tcTf = (p) => (TC_HTF[p.tf] ? p.tf : '5m');
+function tcBuyCardHtml(p) {
+    const tf = tcTf(p), htf = TC_HTF[tf], pr = TC_PROOF[tf];
+    const diff = [Number(p.trend) !== 1 && '위 봉 추세 조건 끔', Number(p.stop_atr) !== 1 && `손절 여유 ATR ${p.stop_atr}배`].filter(Boolean);
+    const same = diff.length ? `<span class="zc-video is-diff"><i class="bi bi-exclamation-circle"></i> 영상과 다름: ${diff.join(' · ')}</span>`
+        : '<span class="zc-video"><i class="bi bi-youtube"></i> 영상 규칙 그대로</span>';
+    const ctrl = pr[2] == null ? '' : `<span class="pbn-num is-ctrl"><b>${zoneSigned(pr[2])}</b><small>아무 때나<br>산 대조</small></span>`;
+    return `<div class="sell-mode zone-card tc-card" draggable="false">
+        <div class="sell-mode-head">보는 봉 <small>${TC_TF_NAME[tf]}로 사고팔고, 큰 흐름은 ${TC_TF_NAME[htf]}</small>${same}</div>
+        <div class="sm-flow">
+            <div class="sm-step"><span class="sm-no">1</span><span class="sm-ico">🔭</span><b>큰 그림</b><small>${TC_TF_NAME[htf]}이<br>오르는 중일 때만</small></div>
+            <i class="bi bi-arrow-right sm-arrow"></i>
+            <div class="sm-step is-zone"><span class="sm-no">2</span><span class="sm-ico">🧱</span><b>뚫린 천장</b><small>마지막으로 뚫린 고점<br>구역으로 되돌아옴</small></div>
+            <i class="bi bi-arrow-right sm-arrow"></i>
+            <div class="sm-step is-buy"><span class="sm-no">3</span><span class="sm-ico">〰️</span><b>쌍바닥 + 양봉</b><small>${TC_TF_NAME[tf]}에서 두 번째<br>바닥 뒤 양봉에 삼</small></div>
+            <i class="bi bi-arrow-right sm-arrow"></i>
+            <div class="sm-step is-done"><span class="sm-no">4</span><span class="sm-ico">🎯</span><b>손절 · 목표</b><small>쌍바닥 아래 − ATR ${p.stop_atr}배<br>위 봉 직전 고점</small></div>
+        </div>
+        ${tcSketchSvg()}
+        <a class="proof-banner${pr[1] <= 0 ? ' is-neg' : ''}" href="${TC_BLOG}" target="_blank" rel="noopener">
+            <span class="pbn-badge"><i class="bi bi-patch-check-fill"></i> 과거 검증</span>
+            <span class="pbn-num"><b>${zoneSigned(pr[1])}</b><small>거래당 평균<br>${pr[0].toLocaleString()}번 · 이긴 비율 ${pr[3]}%</small></span>
+            ${ctrl}
+            <span class="pbn-more">자세히 보기 <i class="bi bi-box-arrow-up-right"></i></span>
+        </a>
+        <div class="proof-mini">${TC_TF_NAME[tf]} · 코인 ${pr[4]}개 · 2022년부터 · 수수료 뺀 값 · 과거 기록이며 앞으로를 뜻하지 않습니다 · 처음엔 시뮬레이션으로 지켜보십시오</div>
+    </div>`;
+}
+// 그림: 천장(점선)을 뚫고 오른 뒤 → 그 자리(보라 띠)로 내려와 쌍바닥 → 양봉에서 삼 → 직전 고점(목표)
+function tcSketchSvg() {
+    const pts = [[8, 92], [30, 80], [46, 86], [64, 60], [78, 66], [92, 58], [104, 62], [122, 30], [140, 22], [156, 34], [170, 50], [182, 60],
+        [192, 52], [204, 58], [214, 60], [226, 46], [250, 32], [276, 24], [300, 20]];
+    return `<svg class="sm-sketch zc-sketch" viewBox="0 0 360 112" role="img" aria-label="뚫린 천장으로 되돌아와 쌍바닥 뒤 양봉에 사는 그림">
+        <rect x="88" y="54" width="240" height="10" class="zk-zone"/>
+        <line x1="40" y1="56" x2="120" y2="56" class="zk-bar"/><text x="40" y="50" class="zk-mut">옛 천장</text>
+        <text x="326" y="74" class="zk-lt zk-zone-t" text-anchor="end">뚫린 천장 = 구역</text>
+        <line x1="140" y1="22" x2="328" y2="22" class="zk-tgt"/><text x="331" y="25" class="zk-lt zk-tgt-t">목표</text>
+        <line x1="216" y1="78" x2="328" y2="78" class="zk-stop"/><text x="331" y="81" class="zk-lt zk-stop-t">손절</text>
+        <path d="M${pts.map(q => q.join(',')).join(' L')}" class="sk-line"/>
+        <text x="182" y="74" class="zk-mut" text-anchor="middle">①</text><text x="214" y="74" class="zk-mut" text-anchor="middle">②</text>
+        <circle cx="226" cy="46" r="5" class="zk-buy"/>
+        <text x="226" y="104" class="zk-buy-t" text-anchor="middle">쌍바닥 뒤 양봉에 삼</text>
+    </svg>`;
+}
+function tcSellCardHtml(p) {
+    return `<div class="sell-mode zone-card is-sell" draggable="false">
+        <div class="sm-flow zc-or-flow">
+            <div class="sm-step is-done"><span class="sm-ico">🎯</span><b>직전 고점에 닿으면</b><small>위 봉에서 구역을 뚫은 뒤<br>최고가 (산 때 정한 값)</small></div>
+            <span class="zc-or">또는</span>
+            <div class="sm-step is-sell"><span class="sm-ico">🧱</span><b>쌍바닥 아래로 내려가면</b><small>가장 낮은 곳 − ATR<br>닿는 순간 손절</small></div>
+        </div>
+        <div class="sm-foot"><i class="bi bi-shield-check"></i>영상 규칙 그대로, 먼저 닿는 쪽에서 모두 팝니다. 손절 · 목표는 산 때의 봉으로 다시 계산해 찾습니다.</div>
+    </div>`;
+}
+
+function zoneSellCardHtml(p) {
+    return `<div class="sell-mode zone-card is-sell" draggable="false">
+        <div class="sm-flow zc-or-flow">
+            <div class="sm-step is-done"><span class="sm-ico">🎯</span><b>목표에 닿으면</b><small>치솟은 뒤 최고가<br>(산 때 정한 값)</small></div>
+            <span class="zc-or">또는</span>
+            <div class="sm-step is-sell"><span class="sm-ico">🧱</span><b>구역 아래로 내려가면</b><small>아랫선 바로 아래(−0.1%)<br>닿는 순간 손절</small></div>
+            ${Number(p.trend) ? '<span class="zc-or">또는</span><div class="sm-step is-sell"><span class="sm-ico">📉</span><b>추세가 꺾이면</b><small>고점 · 저점이<br>낮아지기 시작</small></div>' : ''}
+        </div>
+        <div class="sm-foot"><i class="bi bi-shield-check"></i>영상 규칙 그대로, 먼저 닿는 쪽에서 모두 팝니다. 위험 관리의 손절 · 익절 %를 켜 두면 그것도 함께 봅니다.</div>
     </div>`;
 }
 
@@ -15576,7 +15917,7 @@ const COND_GROUPS = [
     { key: 'pat_ind', icon: '📊', title: '지표 패턴', tip: 'RSI · 거래대금을 함께 보는 모양이며, 눌러서 자세히 보실 수 있습니다.', sub: 'RSI · 거래대금이 함께 보는 모양 — 보장은 없습니다',
       ids: ['rsi_div_up', 'rsi_div_down', 'value_breakout'] },
     { key: 'strategy', icon: '🧠', title: '전략 (시험용)', tip: '여러 지표를 묶은 사고파는 규칙 한 쌍이며, 시뮬레이션에서 지켜보는 용도입니다.', sub: '여러 지표를 묶은 사고파는 한 쌍 — 시뮬레이션에서 지켜보기',
-      ids: ['hongro2_buy', 'hongro2_sell', 'zone_buy', 'zone_sell', 'held_days'] },
+      ids: ['hongro2_buy', 'hongro2_sell', 'zone_buy', 'zone_sell', 'tc_buy', 'tc_sell', 'held_days'] },
 ];
 const COND_OTHER_GROUP = { key: 'other', icon: '🧩', title: '그 밖의 조건', sub: '' };
 const COND_SET_GROUP = { key: 'set', icon: '🔁', title: '세트', tip: '사고파는 순서가 한 쌍으로 정해진 규칙이며, 눌러서 자세히 보실 수 있습니다.', sub: '사고파는 순서가 한 쌍으로 정해진 규칙' };
@@ -16452,9 +16793,10 @@ function renderBotSettingsCard(d) {
             const pv = ruleParams(preset, r);
             desc = condDesc(preset, pv);
             // 짧게: '평균선 40봉 · 평균선과 1% 넘게 아래' (긴 설명은 마우스를 올리면)
-            short = (preset.params || []).filter(q => q.key !== 'tf' && pv[q.key] !== undefined && pv[q.key] !== ''
+            short = (preset.params || []).filter(q => q.key !== 'tf' && (!q.show || q.show(pv)) && pv[q.key] !== undefined && pv[q.key] !== ''
                     && !(Number(pv[q.key]) === 0 && /넘게/.test(q.unit || '')))          // '0% 넘게'처럼 뜻 없는 0 은 뺌
-                .map(q => `${q.label ? `${q.label} ` : ''}${pv[q.key]}${q.unit || ''}`).join(' · ');
+                .map(q => q.choices ? `${q.label} ${(q.choices.find(([v]) => String(v) === String(pv[q.key])) || [0, pv[q.key]])[1]}`
+                    : `${q.label ? `${q.label} ` : ''}${pv[q.key]}${q.unit || ''}`).join(' · ');
             if (TF_PRESETS.has(preset.id) && tfOf(pv) !== 'day') short = `${TF_LABEL[tfOf(pv)]} · ${short}`;
         } catch (e) { /* 설명 없이 */ }
         return `<li title="${esc(desc)}"><span class="bs-c bs-${side}">${esc(preset.title)}</span>${short ? `<span class="bs-tags">${short.split(' · ').map(x => `<em>${esc(x)}</em>`).join('')}</span>` : ''}</li>`;

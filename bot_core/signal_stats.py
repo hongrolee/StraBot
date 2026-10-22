@@ -28,7 +28,7 @@ PATTERN_SELL = {'shooting_star', 'bear_engulf', 'evening_star', 'three_black', '
 SKIP = {'buy_flow_spike', 'spike_pump', 'pre_spike', 'surge_24h', 'new_listing', 'value_top', 'spike_prone',
         'near_year_low', 'far_from_high', 'stronger_than_btc', 'all_coins',
         'old_listing', 'value_under', 'price_range', 'on_binance', 'not_on_binance', 'buy_targets', 'pick_coins',
-        'hongro2_buy', 'hongro2_sell', 'zone_buy', 'zone_sell', 'held_days'}   # 전략 한 쌍: 봇 규칙 전용 (팔기는 산 값이 있어야 계산됨)
+        'hongro2_buy', 'hongro2_sell', 'zone_buy', 'zone_sell', 'tc_buy', 'tc_sell', 'held_days'}   # 전략 한 쌍: 봇 규칙 전용 (팔기는 산 값이 있어야 계산됨)
 
 
 def signal_dir(cid: str) -> str:
